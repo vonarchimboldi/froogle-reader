@@ -5,6 +5,8 @@ node_modules
 .tools
 .env
 .env.local
+.env.production.local
 dist
 out
 coverage
+.vercel
