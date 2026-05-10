@@ -45,13 +45,20 @@ A compact Google Reader-like app for following individual writers by RSS/Atom fe
    npm run prisma:migrate
    ```
 
-5. Optional seed data:
+5. Configure AI-assisted source lookup:
+
+   ```bash
+   OPENAI_API_KEY="sk-..."
+   OPENAI_MODEL="gpt-4.1-mini"
+   ```
+
+6. Optional seed data:
 
    ```bash
    npm run seed
    ```
 
-6. Start the app:
+7. Start the app:
 
    ```bash
    npm run dev
@@ -74,6 +81,10 @@ npm run prisma:migrate
 
 The user/session data is stored in PostgreSQL. Android keeps only a session
 token on the device and sends it to the hosted API.
+
+Adding a writer uses the backend to call OpenAI, generate likely RSS feed
+candidates from a short description, validate those candidates, and preview the
+first working source. The backend must have `OPENAI_API_KEY` configured.
 
 If an existing local database had writers before accounts were added, migration
 keeps those rows under `legacy@example.local`. After the real user signs up, move
@@ -218,6 +229,7 @@ It starts embedded PostgreSQL when needed, applies migrations, opens the app, an
 
 ## API
 
+- `POST /api/resolve-source` with `{ "description": "..." }`
 - `POST /api/preview-source` with `{ "url": "https://..." }`
 - `POST /api/writers` with `{ "url": "https://..." }`
 - `GET /api/writers`

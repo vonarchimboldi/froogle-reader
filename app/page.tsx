@@ -89,7 +89,7 @@ export default function Home() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedWriterId, setSelectedWriterId] = useState<string>("all");
   const [articleFilter, setArticleFilter] = useState<ArticleFilter>("new");
-  const [url, setUrl] = useState("");
+  const [writerDescription, setWriterDescription] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -223,7 +223,7 @@ export default function Home() {
     }
   }
 
-  async function handlePreview(event: FormEvent<HTMLFormElement>) {
+  async function handleResolveSource(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     setNotice(null);
@@ -231,16 +231,17 @@ export default function Home() {
     setIsPreviewing(true);
 
     try {
-      const response = await fetch(apiUrl("/api/preview-source"), {
+      const response = await fetch(apiUrl("/api/resolve-source"), {
         method: "POST",
         headers: authHeaders(authToken, { "content-type": "application/json" }),
-        body: JSON.stringify({ url })
+        body: JSON.stringify({ description: writerDescription })
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Preview failed.");
-      setPreview(data);
+      if (!response.ok) throw new Error(data.error || "Source lookup failed.");
+      setPreview(data.preview);
+      setNotice(`Found ${data.selected?.label ?? "a source"}: ${data.preview.sourceUrl}`);
     } catch (previewError) {
-      setError(previewError instanceof Error ? previewError.message : "Preview failed.");
+      setError(previewError instanceof Error ? previewError.message : "Source lookup failed.");
     } finally {
       setIsPreviewing(false);
     }
@@ -261,7 +262,7 @@ export default function Home() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not save writer.");
       setPreview(null);
-      setUrl("");
+      setWriterDescription("");
       setSelectedWriterId(data.id);
       await refreshData(data.id);
     } catch (saveError) {
@@ -540,21 +541,22 @@ export default function Home() {
               </div>
 
               <form
-                onSubmit={handlePreview}
+                onSubmit={handleResolveSource}
                 className="grid gap-2 rounded-lg border border-[#d8d2c8] bg-white p-2 shadow-sm md:grid-cols-[1fr_auto]"
               >
-                <input
-                  value={url}
-                  onChange={(event) => setUrl(event.target.value)}
-                  placeholder="Paste an RSS feed or author page URL"
-                  className="h-11 min-w-0 rounded-md border-0 bg-[#f6f4ef] px-3 text-sm outline-none ring-1 ring-transparent transition focus:bg-white focus:ring-[#627566]"
+                <textarea
+                  value={writerDescription}
+                  onChange={(event) => setWriterDescription(event.target.value)}
+                  placeholder="Describe the writer and where they publish"
+                  rows={2}
+                  className="min-h-14 min-w-0 resize-none rounded-md border-0 bg-[#f6f4ef] px-3 py-2 text-sm outline-none ring-1 ring-transparent transition focus:bg-white focus:ring-[#627566]"
                 />
                 <button
-                  disabled={isPreviewing || !url.trim()}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-4 text-sm font-semibold text-white transition hover:bg-[#263b2f] disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isPreviewing || !writerDescription.trim()}
+                  className="inline-flex min-h-14 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-4 text-sm font-semibold text-white transition hover:bg-[#263b2f] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isPreviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                  Preview source
+                  Find source
                 </button>
               </form>
 

@@ -33,6 +33,8 @@ Required backend environment variables:
 
 ```bash
 DATABASE_URL="postgresql://..."
+OPENAI_API_KEY="sk-..."
+OPENAI_MODEL="gpt-4.1-mini"
 API_ALLOWED_ORIGIN="capacitor://localhost"
 ```
 
@@ -64,6 +66,9 @@ Expected response:
 ```json
 {"ok":true}
 ```
+
+The AI-assisted writer lookup will not work until `OPENAI_API_KEY` is set on
+the backend deployment.
 
 ## 5. Build Android Against Hosted Backend
 
