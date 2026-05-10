@@ -59,6 +59,105 @@ A compact Google Reader-like app for following individual writers by RSS/Atom fe
 
 Open `http://localhost:3000`.
 
+## Android beta packaging
+
+This repository includes a Capacitor Android wrapper for the existing web app.
+It packages the exported web UI from `out/` into the Android project at
+`android/app/src/main/assets/public`.
+
+The reader still depends on the existing Next.js API routes and PostgreSQL
+backend. The Android WebView cannot run those server routes or the database
+inside the APK, so beta builds need a reachable hosted backend URL.
+
+### Install dependencies
+
+```bash
+npm install
+```
+
+### Configure API access for Android
+
+For a functional Android beta, set the public API base URL before building the
+mobile assets:
+
+```bash
+NEXT_PUBLIC_API_BASE_URL="https://your-hosted-writer-reader.example.com"
+```
+
+On the hosted backend, optionally restrict CORS to Capacitor:
+
+```bash
+API_ALLOWED_ORIGIN="capacitor://localhost"
+```
+
+If `NEXT_PUBLIC_API_BASE_URL` is omitted, the bundled app will still open, but
+the reader actions will try to call `/api/*` from the WebView origin and will
+not reach the Next.js backend.
+
+### Build the web app
+
+Existing server build:
+
+```bash
+npm run build
+```
+
+Capacitor/static mobile build:
+
+```bash
+npm run build:mobile
+```
+
+`npm run build:mobile` temporarily excludes `app/api` while running Next static
+export, then restores it. This keeps the normal Next server/API deployment path
+unchanged while producing the `out/` directory needed by Capacitor.
+
+### Sync Capacitor
+
+```bash
+npm run cap:sync
+```
+
+This rebuilds the static web assets and copies them into the Android project.
+To sync without rebuilding after a completed mobile build, run:
+
+```bash
+npx cap sync android
+```
+
+### Open the Android project
+
+```bash
+npm run cap:open
+```
+
+This opens the generated `android/` project in Android Studio.
+
+### Build or run a debug APK
+
+From Android Studio, choose the `app` configuration and run it on an emulator or
+device. From the command line:
+
+```bash
+cd android
+./gradlew assembleDebug
+```
+
+The debug APK is written under `android/app/build/outputs/apk/debug/`.
+
+### Known Android beta limitations
+
+- The APK bundles the web UI only; it does not bundle PostgreSQL, Prisma server
+  code, RSS polling, or the Next.js API routes.
+- A hosted backend with `DATABASE_URL` configured is required for real reader
+  behavior in beta builds.
+- Cross-origin WebView calls require CORS. This repo adds CORS headers to the
+  API routes and supports `API_ALLOWED_ORIGIN`.
+- External article links open in the WebView/browser behavior provided by the
+  platform; a later beta may want Capacitor Browser or App URL handling.
+- App icons, splash assets, signing keys, versioning, and Play internal/closed
+  testing setup are still follow-up release tasks.
+
 ## Polling
 
 Run:

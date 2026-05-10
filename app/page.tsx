@@ -58,6 +58,12 @@ type Preview = {
 
 type ArticleFilter = "new" | "all";
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "";
+
+function apiUrl(path: string) {
+  return `${API_BASE_URL}${path}`;
+}
+
 export default function Home() {
   const [writers, setWriters] = useState<Writer[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
@@ -95,8 +101,8 @@ export default function Home() {
     setIsLoading(true);
     try {
       const [writersResponse, articlesResponse] = await Promise.all([
-        fetch("/api/writers"),
-        fetch(`/api/articles${writerId !== "all" ? `?writerId=${writerId}` : ""}`)
+        fetch(apiUrl("/api/writers")),
+        fetch(apiUrl(`/api/articles${writerId !== "all" ? `?writerId=${writerId}` : ""}`))
       ]);
 
       if (!writersResponse.ok || !articlesResponse.ok) {
@@ -122,7 +128,7 @@ export default function Home() {
     setIsPreviewing(true);
 
     try {
-      const response = await fetch("/api/preview-source", {
+      const response = await fetch(apiUrl("/api/preview-source"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ url })
@@ -144,7 +150,7 @@ export default function Home() {
     setNotice(null);
 
     try {
-      const response = await fetch("/api/writers", {
+      const response = await fetch(apiUrl("/api/writers"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ url: preview.sourceUrl })
@@ -163,7 +169,7 @@ export default function Home() {
   }
 
   async function deleteWriter(writerId: string) {
-    const response = await fetch(`/api/writers/${writerId}`, { method: "DELETE" });
+    const response = await fetch(apiUrl(`/api/writers/${writerId}`), { method: "DELETE" });
     if (!response.ok) {
       setError("Could not delete writer.");
       return;
@@ -180,7 +186,7 @@ export default function Home() {
     setNotice(null);
 
     try {
-      const response = await fetch("/api/poll", { method: "POST" });
+      const response = await fetch(apiUrl("/api/poll"), { method: "POST" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not check sources.");
       await refreshData();
@@ -202,7 +208,7 @@ export default function Home() {
       current.map((item) => (item.id === article.id ? { ...item, isRead: nextIsRead } : item))
     );
 
-    const response = await fetch(`/api/articles/${article.id}/read`, {
+    const response = await fetch(apiUrl(`/api/articles/${article.id}/read`), {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ isRead: nextIsRead })

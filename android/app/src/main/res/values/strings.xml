@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Writer Reader</string>
+    <string name="title_activity_main">Writer Reader</string>
+    <string name="package_name">com.paktochman.writerreader</string>
+    <string name="custom_url_scheme">com.paktochman.writerreader</string>
+</resources>

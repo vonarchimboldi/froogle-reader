@@ -1,5 +1,7 @@
-import { NextResponse } from "next/server";
+import { apiJson, handleOptions } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+
+export { handleOptions as OPTIONS };
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   try {
@@ -9,8 +11,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       where: { id: params.id },
       data: { isRead }
     });
-    return NextResponse.json(article);
+    return apiJson(article);
   } catch {
-    return NextResponse.json({ error: "Article not found." }, { status: 404 });
+    return apiJson({ error: "Article not found." }, { status: 404 });
   }
 }

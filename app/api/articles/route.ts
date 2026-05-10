@@ -1,5 +1,7 @@
-import { NextResponse } from "next/server";
+import { apiJson, handleOptions } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+
+export { handleOptions as OPTIONS };
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -20,5 +22,5 @@ export async function GET(request: Request) {
     take: 200
   });
 
-  return NextResponse.json(articles);
+  return apiJson(articles);
 }

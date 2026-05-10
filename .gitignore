@@ -1,8 +1,10 @@
 node_modules
 .next
+.next-mobile
 .embedded-postgres
 .tools
 .env
 .env.local
 dist
+out
 coverage

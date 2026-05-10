@@ -1,11 +1,13 @@
-import { NextResponse } from "next/server";
+import { apiJson, handleOptions } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+
+export { handleOptions as OPTIONS };
 
 export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
   try {
     await prisma.writer.delete({ where: { id: params.id } });
-    return NextResponse.json({ ok: true });
+    return apiJson({ ok: true });
   } catch {
-    return NextResponse.json({ error: "Writer not found." }, { status: 404 });
+    return apiJson({ error: "Writer not found." }, { status: 404 });
   }
 }

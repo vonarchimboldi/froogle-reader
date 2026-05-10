@@ -5,8 +5,12 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
+    "build:mobile": "node scripts/build-mobile.mjs",
     "start": "next start",
     "lint": "next lint",
+    "cap:sync": "npm run build:mobile && npx cap sync android",
+    "cap:open": "npx cap open android",
+    "cap:run:android": "npm run cap:sync && npx cap run android",
     "db:up": "docker compose up -d",
     "db:embedded": "node scripts/embedded-db.mjs",
     "launch": "node scripts/launch.mjs",
@@ -16,6 +20,9 @@
     "prisma:migrate": "prisma migrate dev"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.3",
+    "@capacitor/cli": "^8.3.3",
+    "@capacitor/core": "^8.3.3",
     "@prisma/client": "^5.22.0",
     "cheerio": "^1.0.0",
     "embedded-postgres": "^18.3.0-beta.17",
