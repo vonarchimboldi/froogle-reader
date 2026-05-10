@@ -75,6 +75,17 @@ npm run prisma:migrate
 The user/session data is stored in PostgreSQL. Android keeps only a session
 token on the device and sends it to the hosted API.
 
+If an existing local database had writers before accounts were added, migration
+keeps those rows under `legacy@example.local`. After the real user signs up, move
+that local data to the real account:
+
+```bash
+npm run data:claim-legacy -- user@example.com
+```
+
+Run this only once, before using that database as the source for a hosted/shared
+database.
+
 ## Android beta packaging
 
 This repository includes a Capacitor Android wrapper for the existing web app.
