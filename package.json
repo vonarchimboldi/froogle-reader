@@ -19,7 +19,8 @@
     "data:claim-legacy": "tsx scripts/claim-legacy-data.ts",
     "seed": "tsx prisma/seed.ts",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.3",

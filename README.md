@@ -103,6 +103,8 @@ The reader still depends on the existing Next.js API routes and PostgreSQL
 backend. The Android WebView cannot run those server routes or the database
 inside the APK, so beta builds need a reachable hosted backend URL.
 
+For the full hosted backend setup, see [docs/deployment.md](docs/deployment.md).
+
 ### Install dependencies
 
 ```bash
