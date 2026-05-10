@@ -15,6 +15,7 @@
     "db:embedded": "node scripts/embedded-db.mjs",
     "launch": "node scripts/launch.mjs",
     "poll": "tsx scripts/poll.ts",
+    "data:claim-all": "tsx scripts/claim-all-data.ts",
     "data:claim-legacy": "tsx scripts/claim-legacy-data.ts",
     "seed": "tsx prisma/seed.ts",
     "prisma:generate": "prisma generate",

@@ -86,6 +86,13 @@ npm run data:claim-legacy -- user@example.com
 Run this only once, before using that database as the source for a hosted/shared
 database.
 
+For a local database that predates accounts and should be treated as one
+person's reader, assign every existing writer row to that user:
+
+```bash
+npm run data:claim-all -- user@example.com
+```
+
 ## Android beta packaging
 
 This repository includes a Capacitor Android wrapper for the existing web app.
