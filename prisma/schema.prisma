@@ -1,0 +1,44 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SourceType {
+  RSS
+  AUTHOR_PAGE
+}
+
+model Writer {
+  id             String     @id @default(cuid())
+  name           String
+  publication    String?
+  sourceUrl      String     @unique
+  sourceType     SourceType
+  selectorConfig Json?
+  lastCheckedAt  DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  articles       Article[]
+}
+
+model Article {
+  id           String   @id @default(cuid())
+  writerId     String
+  title        String
+  url          String
+  canonicalUrl String   @unique
+  summary      String?
+  publishedAt  DateTime?
+  discoveredAt DateTime @default(now())
+  isRead       Boolean  @default(false)
+  rawData      Json?
+  writer       Writer   @relation(fields: [writerId], references: [id], onDelete: Cascade)
+
+  @@index([writerId])
+  @@index([publishedAt])
+  @@index([discoveredAt])
+}

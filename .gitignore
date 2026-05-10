@@ -1,0 +1,8 @@
+node_modules
+.next
+.embedded-postgres
+.tools
+.env
+.env.local
+dist
+coverage
