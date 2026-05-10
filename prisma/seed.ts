@@ -3,10 +3,25 @@ import { PrismaClient, SourceType } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
-  const writer = await prisma.writer.upsert({
-    where: { sourceUrl: "https://example.com/demo-writer.xml" },
+  const user = await prisma.user.upsert({
+    where: { email: "demo@example.local" },
     update: {},
     create: {
+      email: "demo@example.local",
+      passwordHash: "disabled"
+    }
+  });
+
+  const writer = await prisma.writer.upsert({
+    where: {
+      userId_sourceUrl: {
+        userId: user.id,
+        sourceUrl: "https://example.com/demo-writer.xml"
+      }
+    },
+    update: {},
+    create: {
+      userId: user.id,
       name: "Demo Writer",
       publication: "Example Daily",
       sourceUrl: "https://example.com/demo-writer.xml",
@@ -16,7 +31,12 @@ async function main() {
   });
 
   await prisma.article.upsert({
-    where: { canonicalUrl: "https://example.com/demo/first-brief" },
+    where: {
+      writerId_canonicalUrl: {
+        writerId: writer.id,
+        canonicalUrl: "https://example.com/demo/first-brief"
+      }
+    },
     update: {},
     create: {
       writerId: writer.id,

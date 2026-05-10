@@ -12,17 +12,44 @@ enum SourceType {
   AUTHOR_PAGE
 }
 
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+  writers      Writer[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
 model Writer {
   id             String     @id @default(cuid())
+  userId         String
   name           String
   publication    String?
-  sourceUrl      String     @unique
+  sourceUrl      String
   sourceType     SourceType
   selectorConfig Json?
   lastCheckedAt  DateTime?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   articles       Article[]
+
+  @@unique([userId, sourceUrl])
+  @@index([userId])
 }
 
 model Article {
@@ -30,7 +57,7 @@ model Article {
   writerId     String
   title        String
   url          String
-  canonicalUrl String   @unique
+  canonicalUrl String
   summary      String?
   publishedAt  DateTime?
   discoveredAt DateTime @default(now())
@@ -41,4 +68,5 @@ model Article {
   @@index([writerId])
   @@index([publishedAt])
   @@index([discoveredAt])
+  @@unique([writerId, canonicalUrl])
 }

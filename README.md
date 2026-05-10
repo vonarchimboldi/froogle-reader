@@ -59,6 +59,22 @@ A compact Google Reader-like app for following individual writers by RSS/Atom fe
 
 Open `http://localhost:3000`.
 
+## Accounts and per-user data
+
+Writer Reader now requires an account before the reader loads. Each saved writer
+belongs to the signed-in user, and article queries are filtered through that
+user's writers. This prevents different Android beta users from seeing each
+other's saved sources.
+
+For existing databases, run migrations before deploying or testing:
+
+```bash
+npm run prisma:migrate
+```
+
+The user/session data is stored in PostgreSQL. Android keeps only a session
+token on the device and sends it to the hosted API.
+
 ## Android beta packaging
 
 This repository includes a Capacitor Android wrapper for the existing web app.
@@ -151,6 +167,8 @@ The debug APK is written under `android/app/build/outputs/apk/debug/`.
   code, RSS polling, or the Next.js API routes.
 - A hosted backend with `DATABASE_URL` configured is required for real reader
   behavior in beta builds.
+- Users must sign up or log in on each device. Their writers/articles persist
+  in the hosted PostgreSQL database under their account.
 - Cross-origin WebView calls require CORS. This repo adds CORS headers to the
   API routes and supports `API_ALLOWED_ORIGIN`.
 - External article links open in the WebView/browser behavior provided by the

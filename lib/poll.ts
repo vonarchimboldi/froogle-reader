@@ -13,8 +13,11 @@ export type PollSummary = {
   }>;
 };
 
-export async function pollWriterSources(): Promise<PollSummary> {
-  const writers = await prisma.writer.findMany({ orderBy: { createdAt: "asc" } });
+export async function pollWriterSources(userId?: string): Promise<PollSummary> {
+  const writers = await prisma.writer.findMany({
+    where: userId ? { userId } : undefined,
+    orderBy: { createdAt: "asc" }
+  });
   const summary: PollSummary = {
     checked: writers.length,
     created: 0,

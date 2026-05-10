@@ -8,6 +8,7 @@ import {
   Filter,
   Inbox,
   Loader2,
+  LogOut,
   Plus,
   Radio,
   RefreshCw,
@@ -57,6 +58,11 @@ type Preview = {
 };
 
 type ArticleFilter = "new" | "all";
+type AuthMode = "login" | "signup";
+type AuthUser = {
+  id: string;
+  email: string;
+};
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "";
 
@@ -64,7 +70,21 @@ function apiUrl(path: string) {
   return `${API_BASE_URL}${path}`;
 }
 
+function authHeaders(token: string | null, extraHeaders?: Record<string, string>): HeadersInit {
+  return {
+    ...(token ? { authorization: `Bearer ${token}` } : {}),
+    ...extraHeaders
+  };
+}
+
 export default function Home() {
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
   const [writers, setWriters] = useState<Writer[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedWriterId, setSelectedWriterId] = useState<string>("all");
@@ -97,13 +117,43 @@ export default function Home() {
     [articleFilter, articles]
   );
 
-  const refreshData = useCallback(async (writerId = selectedWriterId) => {
+  const signOut = useCallback(async () => {
+    const token = authToken;
+    if (token) {
+      await fetch(apiUrl("/api/auth/logout"), {
+        method: "POST",
+        headers: authHeaders(token)
+      }).catch(() => undefined);
+    }
+
+    localStorage.removeItem("writerReaderAuthToken");
+    setAuthToken(null);
+    setAuthUser(null);
+    setWriters([]);
+    setArticles([]);
+    setPreview(null);
+    setSelectedWriterId("all");
+  }, [authToken]);
+
+  const refreshData = useCallback(async (writerId = selectedWriterId, token = authToken) => {
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     try {
       const [writersResponse, articlesResponse] = await Promise.all([
-        fetch(apiUrl("/api/writers")),
-        fetch(apiUrl(`/api/articles${writerId !== "all" ? `?writerId=${writerId}` : ""}`))
+        fetch(apiUrl("/api/writers"), { headers: authHeaders(token) }),
+        fetch(apiUrl(`/api/articles${writerId !== "all" ? `?writerId=${writerId}` : ""}`), {
+          headers: authHeaders(token)
+        })
       ]);
+
+      if (writersResponse.status === 401 || articlesResponse.status === 401) {
+        await signOut();
+        return;
+      }
 
       if (!writersResponse.ok || !articlesResponse.ok) {
         throw new Error("Load failed");
@@ -114,11 +164,64 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedWriterId]);
+  }, [authToken, selectedWriterId, signOut]);
 
   useEffect(() => {
+    const token = localStorage.getItem("writerReaderAuthToken");
+    if (!token) {
+      setAuthChecked(true);
+      setIsLoading(false);
+      return;
+    }
+
+    setAuthToken(token);
+    fetch(apiUrl("/api/auth/me"), { headers: authHeaders(token) })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Session expired");
+        const data = await response.json();
+        setAuthUser(data.user);
+        await refreshData("all", token);
+      })
+      .catch(() => {
+        localStorage.removeItem("writerReaderAuthToken");
+        setAuthToken(null);
+        setAuthUser(null);
+        setIsLoading(false);
+      })
+      .finally(() => setAuthChecked(true));
+  }, [refreshData]);
+
+  useEffect(() => {
+    if (!authUser || !authToken) return;
     refreshData(selectedWriterId).catch(() => setError("Could not load the reader."));
-  }, [refreshData, selectedWriterId]);
+  }, [authToken, authUser, refreshData, selectedWriterId]);
+
+  async function handleAuth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setNotice(null);
+    setIsAuthenticating(true);
+
+    try {
+      const response = await fetch(apiUrl(`/api/auth/${authMode}`), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: authEmail, password: authPassword })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Authentication failed.");
+
+      localStorage.setItem("writerReaderAuthToken", data.token);
+      setAuthToken(data.token);
+      setAuthUser(data.user);
+      setAuthPassword("");
+      await refreshData("all", data.token);
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : "Authentication failed.");
+    } finally {
+      setIsAuthenticating(false);
+    }
+  }
 
   async function handlePreview(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -130,7 +233,7 @@ export default function Home() {
     try {
       const response = await fetch(apiUrl("/api/preview-source"), {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: authHeaders(authToken, { "content-type": "application/json" }),
         body: JSON.stringify({ url })
       });
       const data = await response.json();
@@ -152,7 +255,7 @@ export default function Home() {
     try {
       const response = await fetch(apiUrl("/api/writers"), {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: authHeaders(authToken, { "content-type": "application/json" }),
         body: JSON.stringify({ url: preview.sourceUrl })
       });
       const data = await response.json();
@@ -169,7 +272,10 @@ export default function Home() {
   }
 
   async function deleteWriter(writerId: string) {
-    const response = await fetch(apiUrl(`/api/writers/${writerId}`), { method: "DELETE" });
+    const response = await fetch(apiUrl(`/api/writers/${writerId}`), {
+      method: "DELETE",
+      headers: authHeaders(authToken)
+    });
     if (!response.ok) {
       setError("Could not delete writer.");
       return;
@@ -186,7 +292,7 @@ export default function Home() {
     setNotice(null);
 
     try {
-      const response = await fetch(apiUrl("/api/poll"), { method: "POST" });
+      const response = await fetch(apiUrl("/api/poll"), { method: "POST", headers: authHeaders(authToken) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not check sources.");
       await refreshData();
@@ -210,7 +316,7 @@ export default function Home() {
 
     const response = await fetch(apiUrl(`/api/articles/${article.id}/read`), {
       method: "PATCH",
-      headers: { "content-type": "application/json" },
+      headers: authHeaders(authToken, { "content-type": "application/json" }),
       body: JSON.stringify({ isRead: nextIsRead })
     });
 
@@ -220,6 +326,81 @@ export default function Home() {
       );
       setError("Could not update read state.");
     }
+  }
+
+  if (!authChecked) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#f6f4ef] text-[#20242a]">
+        <div className="inline-flex items-center gap-2 text-sm text-[#756c61]">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          Opening reader
+        </div>
+      </main>
+    );
+  }
+
+  if (!authUser) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#f6f4ef] px-4 text-[#20242a]">
+        <section className="w-full max-w-sm rounded-lg border border-[#d8d2c8] bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="grid h-10 w-10 place-items-center rounded-md bg-[#d36b45] text-white">
+              <Rss className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-lg font-semibold">Writer Reader</h1>
+              <p className="text-sm text-[#756c61]">Sign in to your reader</p>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-2 rounded-md bg-[#f6f4ef] p-1">
+            <button className={authModeButton(authMode === "login")} onClick={() => setAuthMode("login")}>
+              Log in
+            </button>
+            <button className={authModeButton(authMode === "signup")} onClick={() => setAuthMode("signup")}>
+              Sign up
+            </button>
+          </div>
+
+          <form onSubmit={handleAuth} className="mt-5 grid gap-3">
+            <label className="grid gap-1 text-sm font-medium">
+              Email
+              <input
+                type="email"
+                value={authEmail}
+                onChange={(event) => setAuthEmail(event.target.value)}
+                className="h-11 rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 font-normal outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
+                autoComplete="email"
+              />
+            </label>
+            <label className="grid gap-1 text-sm font-medium">
+              Password
+              <input
+                type="password"
+                value={authPassword}
+                onChange={(event) => setAuthPassword(event.target.value)}
+                className="h-11 rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 font-normal outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
+                autoComplete={authMode === "login" ? "current-password" : "new-password"}
+              />
+            </label>
+
+            {error && (
+              <div className="rounded-md border border-[#e7b4a2] bg-[#fff4ef] px-3 py-2 text-sm text-[#8a3a25]">
+                {error}
+              </div>
+            )}
+
+            <button
+              disabled={isAuthenticating || !authEmail.trim() || !authPassword}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-4 text-sm font-semibold text-white transition hover:bg-[#263b2f] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isAuthenticating && <Loader2 className="h-4 w-4 animate-spin" />}
+              {authMode === "login" ? "Log in" : "Create account"}
+            </button>
+          </form>
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -234,7 +415,9 @@ export default function Home() {
                 </div>
                 <div>
                   <div className="text-lg font-semibold">Writer Reader</div>
-                  <div className="text-xs text-[#b9c0b6]">Personal source desk</div>
+                  <div className="max-w-[180px] truncate text-xs text-[#b9c0b6]" title={authUser.email}>
+                    {authUser.email}
+                  </div>
                 </div>
               </div>
               <button
@@ -344,6 +527,14 @@ export default function Home() {
                     aria-label="Refresh"
                   >
                     <RefreshCw className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={signOut}
+                    className="grid h-10 w-10 place-items-center rounded-md border border-[#d8d2c8] bg-white text-[#485248] hover:bg-[#f1ede5]"
+                    title="Sign out"
+                    aria-label="Sign out"
+                  >
+                    <LogOut className="h-4 w-4" />
                   </button>
                 </div>
               </div>
@@ -602,6 +793,13 @@ function filterButton(isActive: boolean) {
     isActive
       ? "bg-[#20242a] text-white"
       : "border border-[#d8d2c8] bg-white text-[#485248] hover:bg-[#f1ede5]"
+  ].join(" ");
+}
+
+function authModeButton(isActive: boolean) {
+  return [
+    "h-9 rounded px-3 text-sm font-semibold transition",
+    isActive ? "bg-white text-[#20242a] shadow-sm" : "text-[#756c61] hover:text-[#20242a]"
   ].join(" ");
 }
 

@@ -2,9 +2,10 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { DiscoveredArticle, DiscoveryResult } from "./discovery";
 
-export async function saveWriterWithArticles(discovery: DiscoveryResult) {
+export async function saveWriterWithArticles(userId: string, discovery: DiscoveryResult) {
   return prisma.writer.create({
     data: {
+      userId,
       name: discovery.name,
       publication: discovery.publication,
       sourceUrl: discovery.sourceUrl,
