@@ -1,15 +1,27 @@
 import { discoverSource, DiscoveryResult } from "./discovery";
 
+type SourceCandidateKind = "direct" | "substack" | "google-news";
+
 type SourceCandidate = {
   url: string;
   label: string;
   reason: string;
+  kind: SourceCandidateKind;
+};
+
+type WriterProfile = {
+  writerName: string;
+  primaryPublication: string;
+  officialPageUrl: string | null;
+  substackUrl: string | null;
+  googleNewsQuery: string;
 };
 
 type ResolveSourceResult = {
   preview: DiscoveryResult;
   selected: SourceCandidate;
   candidates: SourceCandidate[];
+  profile: WriterProfile;
 };
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
@@ -20,18 +32,18 @@ export async function resolveSourceFromDescription(description: string): Promise
     throw new Error("Describe the writer and where they publish.");
   }
 
-  const candidates = await generateSourceCandidates(cleaned);
-  const withFallbacks = dedupeCandidates([...candidates, googleNewsCandidate(cleaned)]);
-
+  const profile = await identifyWriterProfile(cleaned);
+  const candidates = buildCandidates(profile);
   const failures: string[] = [];
 
-  for (const candidate of withFallbacks) {
+  for (const candidate of candidates) {
     try {
       const preview = await discoverSource(candidate.url);
       return {
-        preview,
+        preview: normalizeGoogleNewsPreview(preview, candidate, profile),
         selected: candidate,
-        candidates: withFallbacks
+        candidates,
+        profile
       };
     } catch (error) {
       failures.push(`${candidate.url}: ${error instanceof Error ? error.message : "failed"}`);
@@ -41,7 +53,7 @@ export async function resolveSourceFromDescription(description: string): Promise
   throw new Error(`Could not find a working RSS source. Tried ${failures.length} candidate source(s).`);
 }
 
-async function generateSourceCandidates(description: string): Promise<SourceCandidate[]> {
+async function identifyWriterProfile(description: string): Promise<WriterProfile> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is not configured on the backend.");
@@ -55,15 +67,20 @@ async function generateSourceCandidates(description: string): Promise<SourceCand
     },
     body: JSON.stringify({
       model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
-      instructions:
-        "You identify likely RSS feed URLs for writers. Return only plausible feed URLs. Prefer direct RSS feeds, Substack /feed URLs, and Google News RSS search URLs. Do not invent a personal website unless the user supplied enough detail.",
+      instructions: [
+        "Identify the writer and their primary publication from the user's short description.",
+        "If the writer has an obvious author/profile page at the primary publication, include it.",
+        "If the writer has an obvious Substack, include its base URL.",
+        "Do not invent precise URLs when uncertain; use null instead.",
+        "The Google News query must include both writer name and primary publication when both are known."
+      ].join(" "),
       input: [
         {
           role: "user",
           content: [
             {
               type: "input_text",
-              text: `Find likely RSS feed URLs for this writer description:\n\n${description}`
+              text: `Writer description:\n\n${description}`
             }
           ]
         }
@@ -71,28 +88,18 @@ async function generateSourceCandidates(description: string): Promise<SourceCand
       text: {
         format: {
           type: "json_schema",
-          name: "writer_source_candidates",
+          name: "writer_profile",
           strict: true,
           schema: {
             type: "object",
             additionalProperties: false,
-            required: ["candidates"],
+            required: ["writerName", "primaryPublication", "officialPageUrl", "substackUrl", "googleNewsQuery"],
             properties: {
-              candidates: {
-                type: "array",
-                minItems: 1,
-                maxItems: 6,
-                items: {
-                  type: "object",
-                  additionalProperties: false,
-                  required: ["url", "label", "reason"],
-                  properties: {
-                    url: { type: "string" },
-                    label: { type: "string" },
-                    reason: { type: "string" }
-                  }
-                }
-              }
+              writerName: { type: "string" },
+              primaryPublication: { type: "string" },
+              officialPageUrl: { type: ["string", "null"] },
+              substackUrl: { type: ["string", "null"] },
+              googleNewsQuery: { type: "string" }
             }
           }
         }
@@ -107,11 +114,115 @@ async function generateSourceCandidates(description: string): Promise<SourceCand
 
   const outputText = extractOutputText(data);
   if (!outputText) {
-    throw new Error("LLM source lookup returned no candidates.");
+    throw new Error("LLM source lookup returned no writer profile.");
   }
 
-  const parsed = JSON.parse(outputText) as { candidates?: SourceCandidate[] };
-  return dedupeCandidates(parsed.candidates ?? []);
+  const profile = JSON.parse(outputText) as WriterProfile;
+  const writerName = cleanLabel(profile.writerName);
+  const primaryPublication = cleanLabel(profile.primaryPublication);
+
+  if (!writerName) {
+    throw new Error("Could not identify the writer name.");
+  }
+
+  return {
+    writerName,
+    primaryPublication,
+    officialPageUrl: normalizeOptionalUrl(profile.officialPageUrl),
+    substackUrl: normalizeOptionalUrl(profile.substackUrl),
+    googleNewsQuery: cleanLabel(profile.googleNewsQuery) || [writerName, primaryPublication].filter(Boolean).join(" ")
+  };
+}
+
+function buildCandidates(profile: WriterProfile): SourceCandidate[] {
+  const candidates: SourceCandidate[] = [];
+
+  if (profile.substackUrl) {
+    candidates.push({
+      url: substackFeedUrl(profile.substackUrl),
+      label: `${profile.writerName} on Substack`,
+      reason: "Native Substack RSS feed.",
+      kind: "substack"
+    });
+  }
+
+  if (profile.officialPageUrl) {
+    candidates.push(
+      {
+        url: profile.officialPageUrl,
+        label: `${profile.writerName}${profile.primaryPublication ? ` at ${profile.primaryPublication}` : ""}`,
+        reason: "Author or publication page. The app will use its RSS feed if the page exposes one.",
+        kind: "direct"
+      },
+      ...directFeedGuesses(profile)
+    );
+  }
+
+  candidates.push(googleNewsCandidate(profile));
+  return dedupeCandidates(candidates);
+}
+
+function directFeedGuesses(profile: WriterProfile): SourceCandidate[] {
+  if (!profile.officialPageUrl) return [];
+  const url = new URL(profile.officialPageUrl);
+  const withoutTrailingSlash = url.pathname.replace(/\/$/, "");
+  const guesses = [
+    `${url.origin}${withoutTrailingSlash}/feed`,
+    `${url.origin}${withoutTrailingSlash}.rss`,
+    `${url.origin}${withoutTrailingSlash}/rss`
+  ];
+
+  return guesses.map((guess) => ({
+    url: guess,
+    label: `${profile.writerName} direct RSS`,
+    reason: "Common RSS path derived from the author page.",
+    kind: "direct" as const
+  }));
+}
+
+function googleNewsCandidate(profile: WriterProfile): SourceCandidate {
+  const query = encodeURIComponent(profile.googleNewsQuery);
+  return {
+    url: `https://news.google.com/rss/search?q=${query}&hl=en-US&gl=US&ceid=US:en`,
+    label: `${profile.writerName}${profile.primaryPublication ? ` - ${profile.primaryPublication}` : ""}`,
+    reason: "Google News RSS fallback using writer name and primary publication.",
+    kind: "google-news"
+  };
+}
+
+function normalizeGoogleNewsPreview(
+  preview: DiscoveryResult,
+  candidate: SourceCandidate,
+  profile: WriterProfile
+): DiscoveryResult {
+  if (candidate.kind !== "google-news") return preview;
+
+  return {
+    ...preview,
+    name: candidate.label,
+    publication: profile.primaryPublication || "Google News",
+    sourceUrl: candidate.url
+  };
+}
+
+function substackFeedUrl(input: string) {
+  const url = new URL(input);
+  url.hash = "";
+  url.search = "";
+  url.pathname = "/feed";
+  return url.toString();
+}
+
+function normalizeOptionalUrl(value: string | null) {
+  if (!value) return null;
+  try {
+    const url = new URL(value.trim());
+    if (!["http:", "https:"].includes(url.protocol)) return null;
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 function extractOutputText(response: unknown): string | null {
@@ -134,15 +245,6 @@ function extractOutputText(response: unknown): string | null {
   return null;
 }
 
-function googleNewsCandidate(description: string): SourceCandidate {
-  const query = encodeURIComponent(description);
-  return {
-    url: `https://news.google.com/rss/search?q=${query}&hl=en-US&gl=US&ceid=US:en`,
-    label: "Google News RSS",
-    reason: "Fallback Google News RSS search for the supplied writer description."
-  };
-}
-
 function dedupeCandidates(candidates: SourceCandidate[]) {
   const seen = new Set<string>();
   return candidates
@@ -156,4 +258,8 @@ function dedupeCandidates(candidates: SourceCandidate[]) {
       seen.add(candidate.url);
       return true;
     });
+}
+
+function cleanLabel(value?: string | null) {
+  return (value ?? "").replace(/\s+/g, " ").trim();
 }

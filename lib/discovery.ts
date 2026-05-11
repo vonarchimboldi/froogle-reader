@@ -51,9 +51,14 @@ export async function discoverSource(inputUrl: string): Promise<DiscoveryResult>
   const looksLikeFeed =
     contentType.includes("xml") || /^\s*<(rss|feed|rdf:RDF)\b/i.test(body);
 
-  const result = looksLikeFeed
-    ? await discoverFeed(sourceUrl, body)
-    : discoverAuthorPage(sourceUrl, body);
+  if (!looksLikeFeed) {
+    const pageFeedUrl = findPageFeedUrl(sourceUrl, body);
+    if (pageFeedUrl && pageFeedUrl !== sourceUrl) {
+      return discoverSource(pageFeedUrl);
+    }
+  }
+
+  const result = looksLikeFeed ? await discoverFeed(sourceUrl, body) : discoverAuthorPage(sourceUrl, body);
 
   if (result.articles.length === 0) {
     throw new Error("No articles were discovered from this source.");
@@ -63,6 +68,30 @@ export async function discoverSource(inputUrl: string): Promise<DiscoveryResult>
     ...result,
     articles: result.articles.slice(0, 20)
   };
+}
+
+function findPageFeedUrl(sourceUrl: string, body: string): string | null {
+  const $ = cheerio.load(body);
+  let feedUrl: string | null = null;
+
+  $("link[rel~='alternate'][href]").each((_, element) => {
+    if (feedUrl) return;
+
+    const type = ($(element).attr("type") ?? "").toLowerCase();
+    const title = ($(element).attr("title") ?? "").toLowerCase();
+    const href = $(element).attr("href");
+
+    if (!href) return;
+    if (!type.includes("rss") && !type.includes("atom") && !title.includes("rss") && !title.includes("feed")) return;
+
+    try {
+      feedUrl = canonicalizeUrl(href, sourceUrl);
+    } catch {
+      feedUrl = null;
+    }
+  });
+
+  return feedUrl;
 }
 
 async function discoverFeed(sourceUrl: string, body: string): Promise<DiscoveryResult> {
