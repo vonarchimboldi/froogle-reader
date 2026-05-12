@@ -49,12 +49,38 @@ type Preview = {
   publication?: string | null;
   sourceUrl: string;
   sourceType: "RSS" | "AUTHOR_PAGE";
+  lookup?: SourceLookup | null;
   articles: Array<{
     title: string;
     url: string;
     summary?: string | null;
     publishedAt?: string | null;
   }>;
+};
+
+type SourceCandidate = {
+  url: string;
+  label: string;
+  reason: string;
+  kind: "direct" | "substack" | "google-news";
+};
+
+type SourceAttempt = SourceCandidate & {
+  ok: boolean;
+  error?: string;
+};
+
+type SourceLookup = {
+  selected?: SourceCandidate;
+  candidates?: SourceCandidate[];
+  attempts?: SourceAttempt[];
+  profile?: {
+    writerName: string;
+    primaryPublication: string;
+    officialPageUrl: string | null;
+    substackUrl: string | null;
+    googleNewsQuery: string;
+  };
 };
 
 type ArticleFilter = "new" | "all";
@@ -75,6 +101,10 @@ function authHeaders(token: string | null, extraHeaders?: Record<string, string>
     ...(token ? { authorization: `Bearer ${token}` } : {}),
     ...extraHeaders
   };
+}
+
+function looksLikeSourceUrl(value: string) {
+  return /^(https?:\/\/)?([\w-]+\.)+[\w-]+(\/|\?|#|$)/i.test(value.trim());
 }
 
 export default function Home() {
@@ -231,15 +261,18 @@ export default function Home() {
     setIsPreviewing(true);
 
     try {
-      const response = await fetch(apiUrl("/api/resolve-source"), {
+      const description = writerDescription.trim();
+      const isDirectUrl = looksLikeSourceUrl(description);
+      const response = await fetch(apiUrl(isDirectUrl ? "/api/preview-source" : "/api/resolve-source"), {
         method: "POST",
         headers: authHeaders(authToken, { "content-type": "application/json" }),
-        body: JSON.stringify({ description: writerDescription })
+        body: JSON.stringify(isDirectUrl ? { url: description } : { description })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Source lookup failed.");
-      setPreview(data.preview);
-      setNotice(`Found ${data.selected?.label ?? "a source"}: ${data.preview.sourceUrl}`);
+      const nextPreview = isDirectUrl ? data : { ...data.preview, lookup: data };
+      setPreview(nextPreview);
+      setNotice(`Found ${data.selected?.label ?? nextPreview.name ?? "a source"}: ${nextPreview.sourceUrl}`);
     } catch (previewError) {
       setError(previewError instanceof Error ? previewError.message : "Source lookup failed.");
     } finally {
@@ -273,6 +306,9 @@ export default function Home() {
   }
 
   async function deleteWriter(writerId: string) {
+    const writer = writers.find((item) => item.id === writerId);
+    if (writer && !window.confirm(`Remove ${writer.name} and its saved articles?`)) return;
+
     const response = await fetch(apiUrl(`/api/writers/${writerId}`), {
       method: "DELETE",
       headers: authHeaders(authToken)
@@ -469,7 +505,7 @@ export default function Home() {
                   </span>
                 </button>
                 <button
-                  className="grid w-9 place-items-center rounded-md text-[#f0b29c] opacity-0 transition hover:bg-white/10 group-hover:opacity-100"
+                  className="grid w-9 place-items-center rounded-md text-[#f0b29c] transition hover:bg-white/10"
                   onClick={() => deleteWriter(writer.id)}
                   aria-label={`Delete ${writer.name}`}
                   title={`Delete ${writer.name}`}
@@ -574,19 +610,31 @@ export default function Home() {
           </header>
 
           <div className="border-b border-[#d8d2c8] bg-[#f6f4ef] px-4 py-3 md:px-8 lg:hidden">
-            <select
-              value={selectedWriterId}
-              onChange={(event) => setSelectedWriterId(event.target.value)}
-              className="h-10 w-full rounded-md border border-[#d8d2c8] bg-white px-3 text-sm outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
-              aria-label="Filter by writer"
-            >
-              <option value="all">Main feed</option>
-              {writers.map((writer) => (
-                <option key={writer.id} value={writer.id}>
-                  {writer.name} feed
-                </option>
-              ))}
-            </select>
+            <div className="flex gap-2">
+              <select
+                value={selectedWriterId}
+                onChange={(event) => setSelectedWriterId(event.target.value)}
+                className="h-10 min-w-0 flex-1 rounded-md border border-[#d8d2c8] bg-white px-3 text-sm outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
+                aria-label="Filter by writer"
+              >
+                <option value="all">Main feed</option>
+                {writers.map((writer) => (
+                  <option key={writer.id} value={writer.id}>
+                    {writer.name} feed
+                  </option>
+                ))}
+              </select>
+              {selectedWriter && (
+                <button
+                  onClick={() => deleteWriter(selectedWriter.id)}
+                  className="grid h-10 w-10 place-items-center rounded-md border border-[#d8d2c8] bg-white text-[#9c4f36] hover:bg-[#fff4ef]"
+                  aria-label={`Delete ${selectedWriter.name}`}
+                  title={`Delete ${selectedWriter.name}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="border-b border-[#d8d2c8] bg-[#fbfaf7] px-4 py-4 md:px-8">
@@ -712,6 +760,11 @@ export default function Home() {
                 </div>
                 <h2 className="mt-1 truncate text-xl font-semibold">{preview.name}</h2>
                 <p className="mt-1 break-all text-sm text-[#6f665c]">{preview.sourceUrl}</p>
+                {preview.lookup?.selected && (
+                  <p className="mt-2 text-sm text-[#485248]">
+                    Selected {preview.lookup.selected.label}. {preview.lookup.selected.reason}
+                  </p>
+                )}
               </div>
               <button
                 onClick={() => setPreview(null)}
@@ -724,6 +777,29 @@ export default function Home() {
             </div>
 
             <div className="reader-scrollbar max-h-[52vh] overflow-auto p-5">
+              {preview.lookup?.attempts?.length ? (
+                <div className="mb-4 rounded-lg border border-[#d8d2c8] bg-white p-3">
+                  <div className="text-sm font-semibold">Source check</div>
+                  <div className="mt-2 grid gap-2">
+                    {preview.lookup.attempts.map((attempt) => (
+                      <div key={attempt.url} className="grid gap-1 text-sm">
+                        <div className="flex items-center gap-2">
+                          {attempt.ok ? (
+                            <Check className="h-4 w-4 text-[#31583b]" />
+                          ) : (
+                            <X className="h-4 w-4 text-[#9c4f36]" />
+                          )}
+                          <span className="font-medium">{attempt.label}</span>
+                        </div>
+                        <div className="break-all pl-6 text-xs text-[#756c61]">
+                          {attempt.url}
+                          {attempt.error ? ` - ${attempt.error}` : ""}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <div className="mb-3 text-sm font-medium">{preview.articles.length} discovered articles</div>
               <div className="divide-y divide-[#e6e1d8] overflow-hidden rounded-lg border border-[#d8d2c8] bg-white">
                 {preview.articles.slice(0, 8).map((article) => (

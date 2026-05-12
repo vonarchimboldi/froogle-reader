@@ -29,7 +29,7 @@ const parser = new Parser({
 });
 
 export async function discoverSource(inputUrl: string): Promise<DiscoveryResult> {
-  const sourceUrl = normalizeUrl(inputUrl);
+  const sourceUrl = normalizeKnownFeedUrl(normalizeUrl(inputUrl));
   const response = await fetch(sourceUrl, {
     redirect: "follow",
     headers: {
@@ -52,7 +52,7 @@ export async function discoverSource(inputUrl: string): Promise<DiscoveryResult>
     contentType.includes("xml") || /^\s*<(rss|feed|rdf:RDF)\b/i.test(body);
 
   if (!looksLikeFeed) {
-    const pageFeedUrl = findPageFeedUrl(sourceUrl, body);
+    const pageFeedUrl = findYouTubeFeedUrl(body) ?? findPageFeedUrl(sourceUrl, body);
     if (pageFeedUrl && pageFeedUrl !== sourceUrl) {
       return discoverSource(pageFeedUrl);
     }
@@ -68,6 +68,34 @@ export async function discoverSource(inputUrl: string): Promise<DiscoveryResult>
     ...result,
     articles: result.articles.slice(0, 20)
   };
+}
+
+function normalizeKnownFeedUrl(sourceUrl: string): string {
+  const url = new URL(sourceUrl);
+  const hostname = url.hostname.replace(/^www\./, "");
+
+  if (hostname === "youtube.com" || hostname === "m.youtube.com") {
+    const channelMatch = url.pathname.match(/^\/channel\/([^/?#]+)/);
+    const channelId = channelMatch?.[1] || url.searchParams.get("channel_id");
+
+    if (channelId) {
+      return `https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(channelId)}`;
+    }
+  }
+
+  return sourceUrl;
+}
+
+function findYouTubeFeedUrl(body: string): string | null {
+  const feedMatch = body.match(/https:\/\/www\.youtube\.com\/feeds\/videos\.xml\?channel_id=UC[\w-]+/);
+  if (feedMatch?.[0]) return feedMatch[0].replace(/\\u0026/g, "&");
+
+  const externalIdMatch = body.match(/"externalId"\s*:\s*"(UC[\w-]+)"/);
+  if (externalIdMatch?.[1]) {
+    return `https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(externalIdMatch[1])}`;
+  }
+
+  return null;
 }
 
 function findPageFeedUrl(sourceUrl: string, body: string): string | null {

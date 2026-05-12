@@ -241,3 +241,7 @@ It starts embedded PostgreSQL when needed, applies migrations, opens the app, an
 ## Notes
 
 The author page extractor is intentionally generic for the MVP. It scans anchor tags, keeps links that look like article URLs, infers titles from link text, and tries to find nearby dates from `time` elements or common date strings. `selectorConfig` is present in the schema so site-specific extraction rules can be added later.
+
+The source finder also accepts direct RSS/Atom URLs. YouTube channel feeds can be added directly with `https://www.youtube.com/feeds/videos.xml?channel_id=...`, and common `/channel/...` YouTube URLs are converted to that feed format automatically.
+
+When a writer description is resolved through the AI-assisted lookup, the preview shows the candidate sources that were tried and the first source that produced articles. Use this preview before saving to verify that the writer adder found the intended source.

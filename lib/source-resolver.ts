@@ -21,7 +21,13 @@ type ResolveSourceResult = {
   preview: DiscoveryResult;
   selected: SourceCandidate;
   candidates: SourceCandidate[];
+  attempts: SourceAttempt[];
   profile: WriterProfile;
+};
+
+type SourceAttempt = SourceCandidate & {
+  ok: boolean;
+  error?: string;
 };
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
@@ -34,23 +40,30 @@ export async function resolveSourceFromDescription(description: string): Promise
 
   const profile = await identifyWriterProfile(cleaned);
   const candidates = buildCandidates(profile);
-  const failures: string[] = [];
+  const attempts: SourceAttempt[] = [];
 
   for (const candidate of candidates) {
     try {
       const preview = await discoverSource(candidate.url);
+      attempts.push({ ...candidate, ok: true });
       return {
         preview: normalizeGoogleNewsPreview(preview, candidate, profile),
         selected: candidate,
         candidates,
+        attempts,
         profile
       };
     } catch (error) {
-      failures.push(`${candidate.url}: ${error instanceof Error ? error.message : "failed"}`);
+      attempts.push({
+        ...candidate,
+        ok: false,
+        error: error instanceof Error ? error.message : "failed"
+      });
     }
   }
 
-  throw new Error(`Could not find a working RSS source. Tried ${failures.length} candidate source(s).`);
+  const failureSummary = attempts.map((attempt) => `${attempt.label}: ${attempt.error}`).join(" ");
+  throw new Error(`Could not find a working RSS source. Tried ${attempts.length} candidate source(s). ${failureSummary}`);
 }
 
 async function identifyWriterProfile(description: string): Promise<WriterProfile> {
