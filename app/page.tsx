@@ -203,12 +203,10 @@ export default function Home() {
         articleParams.set("writerId", writerId);
       }
       const articlePath = `/api/articles${articleParams.size ? `?${articleParams.toString()}` : ""}`;
-      const [writersResponse, articlesResponse] = await Promise.all([
-        fetch(apiUrl("/api/writers"), { headers: authHeaders(token) }),
-        fetch(apiUrl(articlePath), {
-          headers: authHeaders(token)
-        })
-      ]);
+      const writersResponse = await fetch(apiUrl("/api/writers"), { headers: authHeaders(token) });
+      const articlesResponse = await fetch(apiUrl(articlePath), {
+        headers: authHeaders(token)
+      });
 
       if (writersResponse.status === 401 || articlesResponse.status === 401) {
         await signOut();
