@@ -139,7 +139,7 @@ export default function Home() {
   const isFavoritesFeed = selectedWriterId === "favorites";
   const isBookmarksFeed = selectedWriterId === "bookmarks";
   const isSavedFeed = isFavoritesFeed || isBookmarksFeed;
-  const isWriterFeed = Boolean(selectedWriter);
+  const isWriterFeed = !isMainFeed && !isSavedFeed;
   const isNewFeed = articleFilter === "new";
   const feedTitle = isFavoritesFeed
     ? "Favorites"
@@ -164,10 +164,15 @@ export default function Home() {
   const unreadCount = useMemo(() => articles.filter((article) => !article.isRead).length, [articles]);
   const favoriteCount = useMemo(() => articles.filter((article) => article.isFavorite).length, [articles]);
   const bookmarkCount = useMemo(() => articles.filter((article) => article.isBookmarked).length, [articles]);
-  const visibleArticles = useMemo(
-    () => (isMainFeed && articleFilter === "new" ? articles.filter((article) => !article.isRead) : articles),
-    [articleFilter, articles, isMainFeed]
-  );
+  const visibleArticles = useMemo(() => {
+    const scopedArticles = isWriterFeed
+      ? articles.filter((article) => article.writerId === selectedWriterId || article.writer.id === selectedWriterId)
+      : articles;
+
+    return isMainFeed && articleFilter === "new"
+      ? scopedArticles.filter((article) => !article.isRead)
+      : scopedArticles;
+  }, [articleFilter, articles, isMainFeed, isWriterFeed, selectedWriterId]);
 
   const signOut = useCallback(async () => {
     const token = authToken;
