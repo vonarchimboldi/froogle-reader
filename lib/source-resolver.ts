@@ -161,13 +161,13 @@ function buildCandidates(profile: WriterProfile): SourceCandidate[] {
 
   if (profile.officialPageUrl) {
     candidates.push(
+      ...directFeedGuesses(profile),
       {
         url: profile.officialPageUrl,
         label: `${profile.writerName}${profile.primaryPublication ? ` at ${profile.primaryPublication}` : ""}`,
         reason: "Author or publication page. The app will use its RSS feed if the page exposes one.",
         kind: "direct"
-      },
-      ...directFeedGuesses(profile)
+      }
     );
   }
 
@@ -180,6 +180,7 @@ function directFeedGuesses(profile: WriterProfile): SourceCandidate[] {
   const url = new URL(profile.officialPageUrl);
   const withoutTrailingSlash = url.pathname.replace(/\/$/, "");
   const guesses = [
+    ...siteSpecificFeedGuesses(url),
     `${url.origin}${withoutTrailingSlash}/feed`,
     `${url.origin}${withoutTrailingSlash}.rss`,
     `${url.origin}${withoutTrailingSlash}/rss`
@@ -191,6 +192,18 @@ function directFeedGuesses(profile: WriterProfile): SourceCandidate[] {
     reason: "Common RSS path derived from the author page.",
     kind: "direct" as const
   }));
+}
+
+function siteSpecificFeedGuesses(url: URL) {
+  const atlanticAuthorMatch = url.hostname.replace(/^www\./, "") === "theatlantic.com"
+    ? url.pathname.match(/^\/author\/([^/]+)\/?$/)
+    : null;
+
+  if (atlanticAuthorMatch?.[1]) {
+    return [`${url.origin}/feed/author/${atlanticAuthorMatch[1]}/`];
+  }
+
+  return [];
 }
 
 function googleNewsCandidate(profile: WriterProfile): SourceCandidate {
