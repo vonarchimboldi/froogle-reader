@@ -62,6 +62,8 @@ model Article {
   publishedAt  DateTime?
   discoveredAt DateTime @default(now())
   isRead       Boolean  @default(false)
+  isFavorite   Boolean  @default(false)
+  isBookmarked Boolean  @default(false)
   rawData      Json?
   writer       Writer   @relation(fields: [writerId], references: [id], onDelete: Cascade)
 

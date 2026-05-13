@@ -38,7 +38,7 @@ export async function resolveSourceFromDescription(description: string): Promise
     throw new Error("Describe the writer and where they publish.");
   }
 
-  const profile = await identifyWriterProfile(cleaned);
+  const profile = applyKnownWriterSource(cleaned, await identifyWriterProfile(cleaned));
   const candidates = buildCandidates(profile);
   const attempts: SourceAttempt[] = [];
 
@@ -173,6 +173,21 @@ function buildCandidates(profile: WriterProfile): SourceCandidate[] {
 
   candidates.push(googleNewsCandidate(profile));
   return dedupeCandidates(candidates);
+}
+
+function applyKnownWriterSource(description: string, profile: WriterProfile): WriterProfile {
+  if (/\bderek\s+thompson\b/i.test(`${description} ${profile.writerName}`)) {
+    return {
+      ...profile,
+      writerName: "Derek Thompson",
+      primaryPublication: "Derek Thompson",
+      officialPageUrl: "https://www.derekthompson.org/",
+      substackUrl: "https://www.derekthompson.org/",
+      googleNewsQuery: "Derek Thompson Substack"
+    };
+  }
+
+  return profile;
 }
 
 function directFeedGuesses(profile: WriterProfile): SourceCandidate[] {

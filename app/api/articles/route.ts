@@ -10,9 +10,12 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const writerId = searchParams.get("writerId");
+  const filter = searchParams.get("filter");
 
   const articles = await prisma.article.findMany({
     where: {
+      ...(filter === "favorites" ? { isFavorite: true } : {}),
+      ...(filter === "bookmarks" ? { isBookmarked: true } : {}),
       writer: {
         userId: user.id,
         ...(writerId ? { id: writerId } : {})

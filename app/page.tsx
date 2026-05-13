@@ -2,6 +2,7 @@
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Bookmark,
   Check,
   Clock3,
   ExternalLink,
@@ -14,6 +15,7 @@ import {
   RefreshCw,
   Rss,
   Search,
+  Star,
   Trash2,
   X
 } from "lucide-react";
@@ -37,6 +39,8 @@ type Article = {
   publishedAt?: string | null;
   discoveredAt: string;
   isRead: boolean;
+  isFavorite: boolean;
+  isBookmarked: boolean;
   writer: {
     id: string;
     name: string;
@@ -84,6 +88,7 @@ type SourceLookup = {
 };
 
 type ArticleFilter = "new" | "all";
+type FeedSelection = "all" | "favorites" | "bookmarks" | string;
 type AuthMode = "login" | "signup";
 type AuthUser = {
   id: string;
@@ -117,9 +122,10 @@ export default function Home() {
   const [authChecked, setAuthChecked] = useState(false);
   const [writers, setWriters] = useState<Writer[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
-  const [selectedWriterId, setSelectedWriterId] = useState<string>("all");
+  const [selectedWriterId, setSelectedWriterId] = useState<FeedSelection>("all");
   const [articleFilter, setArticleFilter] = useState<ArticleFilter>("new");
   const [writerDescription, setWriterDescription] = useState("");
+  const [isSourceFinderOpen, setIsSourceFinderOpen] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -130,21 +136,37 @@ export default function Home() {
 
   const selectedWriter = writers.find((writer) => writer.id === selectedWriterId);
   const isMainFeed = selectedWriterId === "all";
+  const isFavoritesFeed = selectedWriterId === "favorites";
+  const isBookmarksFeed = selectedWriterId === "bookmarks";
+  const isSavedFeed = isFavoritesFeed || isBookmarksFeed;
+  const isWriterFeed = Boolean(selectedWriter);
   const isNewFeed = articleFilter === "new";
-  const feedTitle = isMainFeed ? (isNewFeed ? "New articles" : "Main feed") : selectedWriter?.name ?? "Writer feed";
-  const feedKicker = isMainFeed ? (isNewFeed ? "New main feed" : "Main feed") : "Writer feed";
+  const feedTitle = isFavoritesFeed
+    ? "Favorites"
+    : isBookmarksFeed
+      ? "Bookmarks"
+      : isMainFeed
+        ? (isNewFeed ? "New articles" : "Main feed")
+        : selectedWriter?.name ?? "Writer feed";
+  const feedKicker = isSavedFeed ? "Saved articles" : isMainFeed ? (isNewFeed ? "New main feed" : "Main feed") : "Writer feed";
   const feedDescription = isMainFeed
     ? isNewFeed
       ? "Unread articles from every saved writer, latest first"
       : "Every saved article from every writer, latest first"
+    : isFavoritesFeed
+      ? "Articles you marked as favorites"
+      : isBookmarksFeed
+        ? "Articles you bookmarked for later"
     : isNewFeed
-      ? `Unread articles from ${selectedWriter?.name ?? "this writer"}, latest first`
-      : `Every saved article from ${selectedWriter?.name ?? "this writer"}, latest first`;
+      ? `Articles from ${selectedWriter?.name ?? "this writer"}, latest first`
+      : `Articles from ${selectedWriter?.name ?? "this writer"}, latest first`;
   const totalArticleCount = writers.reduce((sum, writer) => sum + writer._count.articles, 0);
   const unreadCount = useMemo(() => articles.filter((article) => !article.isRead).length, [articles]);
+  const favoriteCount = useMemo(() => articles.filter((article) => article.isFavorite).length, [articles]);
+  const bookmarkCount = useMemo(() => articles.filter((article) => article.isBookmarked).length, [articles]);
   const visibleArticles = useMemo(
-    () => (articleFilter === "new" ? articles.filter((article) => !article.isRead) : articles),
-    [articleFilter, articles]
+    () => (isMainFeed && articleFilter === "new" ? articles.filter((article) => !article.isRead) : articles),
+    [articleFilter, articles, isMainFeed]
   );
 
   const signOut = useCallback(async () => {
@@ -163,9 +185,10 @@ export default function Home() {
     setArticles([]);
     setPreview(null);
     setSelectedWriterId("all");
+    setIsSourceFinderOpen(false);
   }, [authToken]);
 
-  const refreshData = useCallback(async (writerId = selectedWriterId, token = authToken) => {
+  const refreshData = useCallback(async (writerId: FeedSelection = selectedWriterId, token = authToken) => {
     if (!token) {
       setIsLoading(false);
       return;
@@ -173,9 +196,16 @@ export default function Home() {
 
     setIsLoading(true);
     try {
+      const articleParams = new URLSearchParams();
+      if (writerId === "favorites") articleParams.set("filter", "favorites");
+      if (writerId === "bookmarks") articleParams.set("filter", "bookmarks");
+      if (writerId !== "all" && writerId !== "favorites" && writerId !== "bookmarks") {
+        articleParams.set("writerId", writerId);
+      }
+      const articlePath = `/api/articles${articleParams.size ? `?${articleParams.toString()}` : ""}`;
       const [writersResponse, articlesResponse] = await Promise.all([
         fetch(apiUrl("/api/writers"), { headers: authHeaders(token) }),
-        fetch(apiUrl(`/api/articles${writerId !== "all" ? `?writerId=${writerId}` : ""}`), {
+        fetch(apiUrl(articlePath), {
           headers: authHeaders(token)
         })
       ]);
@@ -296,6 +326,7 @@ export default function Home() {
       if (!response.ok) throw new Error(data.error || "Could not save writer.");
       setPreview(null);
       setWriterDescription("");
+      setIsSourceFinderOpen(false);
       setSelectedWriterId(data.id);
       await refreshData(data.id);
     } catch (saveError) {
@@ -362,6 +393,31 @@ export default function Home() {
         current.map((item) => (item.id === article.id ? { ...item, isRead: article.isRead } : item))
       );
       setError("Could not update read state.");
+    }
+  }
+
+  async function toggleArticleFlag(article: Article, field: "isFavorite" | "isBookmarked") {
+    const nextValue = !article[field];
+    setArticles((current) =>
+      current.map((item) => (item.id === article.id ? { ...item, [field]: nextValue } : item))
+    );
+
+    const response = await fetch(apiUrl(`/api/articles/${article.id}`), {
+      method: "PATCH",
+      headers: authHeaders(authToken, { "content-type": "application/json" }),
+      body: JSON.stringify({ [field]: nextValue })
+    });
+
+    if (!response.ok) {
+      setArticles((current) =>
+        current.map((item) => (item.id === article.id ? { ...item, [field]: article[field] } : item))
+      );
+      setError("Could not update saved state.");
+      return;
+    }
+
+    if ((selectedWriterId === "favorites" && field === "isFavorite") || (selectedWriterId === "bookmarks" && field === "isBookmarked")) {
+      setArticles((current) => current.filter((item) => item.id !== article.id || nextValue));
     }
   }
 
@@ -476,13 +532,38 @@ export default function Home() {
           <nav className="reader-scrollbar min-h-0 flex-1 overflow-auto p-3">
             <button
               className={sidebarButton(selectedWriterId === "all")}
-              onClick={() => setSelectedWriterId("all")}
+              onClick={() => {
+                setSelectedWriterId("all");
+                setArticleFilter("new");
+              }}
             >
               <span className="flex min-w-0 items-center gap-2">
                 <Inbox className="h-4 w-4 shrink-0" />
                 <span>Main feed</span>
               </span>
               <span className="rounded bg-white/10 px-2 py-0.5 text-xs">{totalArticleCount}</span>
+            </button>
+
+            <button
+              className={`mt-1 ${sidebarButton(selectedWriterId === "favorites")}`}
+              onClick={() => setSelectedWriterId("favorites")}
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <Star className="h-4 w-4 shrink-0" />
+                <span>Favorites</span>
+              </span>
+              <span className="rounded bg-white/10 px-2 py-0.5 text-xs">{favoriteCount}</span>
+            </button>
+
+            <button
+              className={`mt-1 ${sidebarButton(selectedWriterId === "bookmarks")}`}
+              onClick={() => setSelectedWriterId("bookmarks")}
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <Bookmark className="h-4 w-4 shrink-0" />
+                <span>Bookmarks</span>
+              </span>
+              <span className="rounded bg-white/10 px-2 py-0.5 text-xs">{bookmarkCount}</span>
             </button>
 
             <div className="mt-4 px-2 text-xs font-semibold uppercase tracking-wide text-[#94a092]">
@@ -493,7 +574,10 @@ export default function Home() {
               <div key={writer.id} className="group mt-1 flex items-stretch gap-1">
                 <button
                   className={sidebarButton(selectedWriterId === writer.id)}
-                  onClick={() => setSelectedWriterId(writer.id)}
+                  onClick={() => {
+                    setSelectedWriterId(writer.id);
+                    setArticleFilter("all");
+                  }}
                   title={writer.sourceUrl}
                 >
                   <span className="min-w-0 text-left">
@@ -537,17 +621,28 @@ export default function Home() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {isMainFeed && (
+                    <>
+                      <button
+                        onClick={() => setArticleFilter("new")}
+                        className={filterButton(articleFilter === "new")}
+                      >
+                        New
+                      </button>
+                      <button
+                        onClick={() => setArticleFilter("all")}
+                        className={filterButton(articleFilter === "all")}
+                      >
+                        All
+                      </button>
+                    </>
+                  )}
                   <button
-                    onClick={() => setArticleFilter("new")}
-                    className={filterButton(articleFilter === "new")}
+                    onClick={() => setIsSourceFinderOpen((isOpen) => !isOpen)}
+                    className="inline-flex h-10 items-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
                   >
-                    New
-                  </button>
-                  <button
-                    onClick={() => setArticleFilter("all")}
-                    className={filterButton(articleFilter === "all")}
-                  >
-                    All
+                    <Plus className="h-4 w-4" />
+                    Add writer
                   </button>
                   <button
                     onClick={checkSourcesNow}
@@ -576,25 +671,27 @@ export default function Home() {
                 </div>
               </div>
 
-              <form
-                onSubmit={handleResolveSource}
-                className="grid gap-2 rounded-lg border border-[#d8d2c8] bg-white p-2 shadow-sm md:grid-cols-[1fr_auto]"
-              >
-                <textarea
-                  value={writerDescription}
-                  onChange={(event) => setWriterDescription(event.target.value)}
-                  placeholder="Describe the writer and where they publish"
-                  rows={2}
-                  className="min-h-14 min-w-0 resize-none rounded-md border-0 bg-[#f6f4ef] px-3 py-2 text-sm outline-none ring-1 ring-transparent transition focus:bg-white focus:ring-[#627566]"
-                />
-                <button
-                  disabled={isPreviewing || !writerDescription.trim()}
-                  className="inline-flex min-h-14 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-4 text-sm font-semibold text-white transition hover:bg-[#263b2f] disabled:cursor-not-allowed disabled:opacity-60"
+              {isSourceFinderOpen && (
+                <form
+                  onSubmit={handleResolveSource}
+                  className="grid gap-2 rounded-lg border border-[#d8d2c8] bg-white p-2 shadow-sm md:grid-cols-[1fr_auto]"
                 >
-                  {isPreviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                  Find source
-                </button>
-              </form>
+                  <textarea
+                    value={writerDescription}
+                    onChange={(event) => setWriterDescription(event.target.value)}
+                    placeholder="Describe the writer and where they publish"
+                    rows={2}
+                    className="min-h-14 min-w-0 resize-none rounded-md border-0 bg-[#f6f4ef] px-3 py-2 text-sm outline-none ring-1 ring-transparent transition focus:bg-white focus:ring-[#627566]"
+                  />
+                  <button
+                    disabled={isPreviewing || !writerDescription.trim()}
+                    className="inline-flex min-h-14 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-4 text-sm font-semibold text-white transition hover:bg-[#263b2f] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isPreviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                    Find source
+                  </button>
+                </form>
+              )}
 
               {error && (
                 <div className="rounded-md border border-[#e7b4a2] bg-[#fff4ef] px-3 py-2 text-sm text-[#8a3a25]">
@@ -613,11 +710,17 @@ export default function Home() {
             <div className="flex gap-2">
               <select
                 value={selectedWriterId}
-                onChange={(event) => setSelectedWriterId(event.target.value)}
+                onChange={(event) => {
+                  const nextSelection = event.target.value;
+                  setSelectedWriterId(nextSelection);
+                  setArticleFilter(nextSelection === "all" ? "new" : "all");
+                }}
                 className="h-10 min-w-0 flex-1 rounded-md border border-[#d8d2c8] bg-white px-3 text-sm outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
                 aria-label="Filter by writer"
               >
                 <option value="all">Main feed</option>
+                <option value="favorites">Favorites</option>
+                <option value="bookmarks">Bookmarks</option>
                 {writers.map((writer) => (
                   <option key={writer.id} value={writer.id}>
                     {writer.name} feed
@@ -637,25 +740,27 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="border-b border-[#d8d2c8] bg-[#fbfaf7] px-4 py-4 md:px-8">
-            <div className="mx-auto grid max-w-6xl gap-3 md:grid-cols-3">
-              <SummaryCard
-                icon={<Inbox className="h-4 w-4" />}
-                label={isNewFeed ? "New feed" : isMainFeed ? "Main feed" : "Writer feed"}
-                value={`${visibleArticles.length} article${visibleArticles.length === 1 ? "" : "s"}`}
-              />
-              <SummaryCard
-                icon={<Filter className="h-4 w-4" />}
-                label={isMainFeed ? "Included writers" : "Source"}
-                value={selectedWriter?.publication ?? selectedWriter?.sourceUrl ?? `${writers.length} writer feeds`}
-              />
-              <SummaryCard
-                icon={<Clock3 className="h-4 w-4" />}
-                label="Last checked"
-                value={selectedWriter ? formatDate(selectedWriter.lastCheckedAt) : "Mixed sources"}
-              />
+          {isMainFeed && (
+            <div className="border-b border-[#d8d2c8] bg-[#fbfaf7] px-4 py-4 md:px-8">
+              <div className="mx-auto grid max-w-6xl gap-3 md:grid-cols-3">
+                <SummaryCard
+                  icon={<Inbox className="h-4 w-4" />}
+                  label={isNewFeed ? "New feed" : "Main feed"}
+                  value={`${visibleArticles.length} article${visibleArticles.length === 1 ? "" : "s"}`}
+                />
+                <SummaryCard
+                  icon={<Filter className="h-4 w-4" />}
+                  label="Included writers"
+                  value={`${writers.length} writer feeds`}
+                />
+                <SummaryCard
+                  icon={<Clock3 className="h-4 w-4" />}
+                  label="Last checked"
+                  value="Mixed sources"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="reader-scrollbar flex-1 overflow-auto px-4 py-5 md:px-8">
             <div className="mx-auto max-w-6xl">
@@ -670,7 +775,15 @@ export default function Home() {
                 <div className="rounded-lg border border-dashed border-[#c9c0b3] bg-white px-6 py-14 text-center">
                   <p className="font-semibold">No articles here</p>
                   <p className="mt-1 text-sm text-[#756c61]">
-                    {articleFilter === "new" ? "Everything in this feed has been read." : "Add a writer source to begin."}
+                    {isFavoritesFeed
+                      ? "Favorite articles will appear here."
+                      : isBookmarksFeed
+                        ? "Bookmarked articles will appear here."
+                        : isWriterFeed
+                          ? "This writer has no saved articles yet."
+                          : articleFilter === "new"
+                            ? "Everything in this feed has been read."
+                            : "Add a writer source to begin."}
                   </p>
                 </div>
               ) : (
@@ -688,10 +801,12 @@ export default function Home() {
                         <div className="grid gap-4 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:p-5">
                           <div className="min-w-0">
                             <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-[#766e64]">
-                              <span className="inline-flex items-center gap-1 rounded bg-[#edf1ed] px-2 py-1 font-medium text-[#36513f]">
-                                <Radio className="h-3 w-3" />
-                                {article.writer.name}
-                              </span>
+                              {!isWriterFeed && (
+                                <span className="inline-flex items-center gap-1 rounded bg-[#edf1ed] px-2 py-1 font-medium text-[#36513f]">
+                                  <Radio className="h-3 w-3" />
+                                  {article.writer.name}
+                                </span>
+                              )}
                               <span>{formatDate(article.publishedAt ?? article.discoveredAt)}</span>
                               {paywall && (
                                 <span className="rounded bg-[#fff0d8] px-2 py-1 font-medium text-[#865315]">
@@ -719,7 +834,31 @@ export default function Home() {
                               </p>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 md:justify-end">
+                          <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                            <button
+                              onClick={() => toggleArticleFlag(article, "isFavorite")}
+                              className={`grid h-9 w-9 place-items-center rounded-md border ${
+                                article.isFavorite
+                                  ? "border-[#d7a348] bg-[#fff3d6] text-[#9a6518]"
+                                  : "border-[#d8d2c8] text-[#303830] hover:bg-[#f1ede5]"
+                              }`}
+                              title={article.isFavorite ? "Remove favorite" : "Favorite"}
+                              aria-label={article.isFavorite ? "Remove favorite" : "Favorite"}
+                            >
+                              <Star className={`h-4 w-4 ${article.isFavorite ? "fill-current" : ""}`} />
+                            </button>
+                            <button
+                              onClick={() => toggleArticleFlag(article, "isBookmarked")}
+                              className={`grid h-9 w-9 place-items-center rounded-md border ${
+                                article.isBookmarked
+                                  ? "border-[#879b73] bg-[#eef5e8] text-[#405a35]"
+                                  : "border-[#d8d2c8] text-[#303830] hover:bg-[#f1ede5]"
+                              }`}
+                              title={article.isBookmarked ? "Remove bookmark" : "Bookmark"}
+                              aria-label={article.isBookmarked ? "Remove bookmark" : "Bookmark"}
+                            >
+                              <Bookmark className={`h-4 w-4 ${article.isBookmarked ? "fill-current" : ""}`} />
+                            </button>
                             <button
                               onClick={() => toggleRead(article)}
                               className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d8d2c8] px-3 text-sm font-medium text-[#303830] hover:bg-[#f1ede5]"
