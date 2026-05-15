@@ -2,12 +2,15 @@
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
+  BellRing,
   Bookmark,
+  BookOpen,
   Check,
   Clock3,
   ExternalLink,
   Filter,
   Inbox,
+  Layers3,
   Loader2,
   LogOut,
   Plus,
@@ -15,6 +18,7 @@ import {
   RefreshCw,
   Rss,
   Search,
+  ShieldCheck,
   Star,
   Trash2,
   X
@@ -437,63 +441,186 @@ export default function Home() {
 
   if (!authUser) {
     return (
-      <main className="grid min-h-screen place-items-center bg-[#f6f4ef] px-4 text-[#20242a]">
-        <section className="w-full max-w-sm rounded-lg border border-[#d8d2c8] bg-white p-5 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-md bg-[#d36b45] text-white">
-              <Rss className="h-5 w-5" />
-            </div>
-            <div>
-              <h1 className="text-lg font-semibold">Writer Reader</h1>
-              <p className="text-sm text-[#756c61]">Sign in to your reader</p>
-            </div>
-          </div>
-
-          <div className="mt-5 grid grid-cols-2 gap-2 rounded-md bg-[#f6f4ef] p-1">
-            <button className={authModeButton(authMode === "login")} onClick={() => setAuthMode("login")}>
-              Log in
-            </button>
-            <button className={authModeButton(authMode === "signup")} onClick={() => setAuthMode("signup")}>
-              Sign up
-            </button>
-          </div>
-
-          <form onSubmit={handleAuth} className="mt-5 grid gap-3">
-            <label className="grid gap-1 text-sm font-medium">
-              Email
-              <input
-                type="email"
-                value={authEmail}
-                onChange={(event) => setAuthEmail(event.target.value)}
-                className="h-11 rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 font-normal outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
-                autoComplete="email"
-              />
-            </label>
-            <label className="grid gap-1 text-sm font-medium">
-              Password
-              <input
-                type="password"
-                value={authPassword}
-                onChange={(event) => setAuthPassword(event.target.value)}
-                className="h-11 rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 font-normal outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
-                autoComplete={authMode === "login" ? "current-password" : "new-password"}
-              />
-            </label>
-
-            {error && (
-              <div className="rounded-md border border-[#e7b4a2] bg-[#fff4ef] px-3 py-2 text-sm text-[#8a3a25]">
-                {error}
+      <main className="min-h-screen bg-[#f6f4ef] text-[#20242a]">
+        <header className="border-b border-[#ded7cc] bg-[#fbfaf7]/95 px-4 py-4 backdrop-blur md:px-8">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-[#d36b45] text-white">
+                <Rss className="h-5 w-5" />
               </div>
-            )}
-
-            <button
-              disabled={isAuthenticating || !authEmail.trim() || !authPassword}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-4 text-sm font-semibold text-white transition hover:bg-[#263b2f] disabled:cursor-not-allowed disabled:opacity-60"
+              <div className="min-w-0">
+                <div className="truncate text-lg font-semibold">Froogle Reader</div>
+                <div className="hidden text-xs text-[#756c61] sm:block">Follow your favorite writers</div>
+              </div>
+            </div>
+            <a
+              href="#signin"
+              className="inline-flex h-10 items-center justify-center rounded-md bg-[#20242a] px-4 text-sm font-semibold text-white hover:bg-black"
             >
-              {isAuthenticating && <Loader2 className="h-4 w-4 animate-spin" />}
-              {authMode === "login" ? "Log in" : "Create account"}
-            </button>
-          </form>
+              Open reader
+            </a>
+          </div>
+        </header>
+
+        <section className="px-4 py-12 md:px-8 md:py-16">
+          <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[minmax(0,1fr)_470px] lg:items-center">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-3 py-1.5 text-sm font-medium text-[#5b6558]">
+                <BookOpen className="h-4 w-4" />
+                A quieter way to keep up with independent writing
+              </div>
+              <h1 className="mt-5 max-w-3xl text-4xl font-semibold leading-tight tracking-tight text-[#20242a] md:text-6xl">
+                Your personal reading desk for your essential writers.
+              </h1>
+              <p className="mt-5 max-w-2xl text-lg leading-8 text-[#5f574f]">
+                Froogle Reader collects articles from RSS feeds and author pages, keeps them organized by writer,
+                and gives you a clean place to read, save, and revisit the work that matters.
+              </p>
+              <div className="mt-7 flex flex-wrap gap-3">
+                <a
+                  href="#signin"
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-5 text-sm font-semibold text-white hover:bg-[#263b2f]"
+                >
+                  <Rss className="h-4 w-4" />
+                  Start reading
+                </a>
+                <a
+                  href="#features"
+                  className="inline-flex h-11 items-center justify-center rounded-md border border-[#d8d2c8] bg-white px-5 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
+                >
+                  See features
+                </a>
+              </div>
+            </div>
+
+            <ReaderPreview />
+          </div>
+        </section>
+
+        <section id="features" className="border-y border-[#ded7cc] bg-[#fbfaf7] px-4 py-12 md:px-8">
+          <div className="mx-auto max-w-6xl">
+            <div className="max-w-2xl">
+              <div className="text-xs font-semibold uppercase tracking-wide text-[#8b4b36]">Features</div>
+              <h2 className="mt-2 text-3xl font-semibold tracking-tight">Built for focused writer discovery.</h2>
+              <p className="mt-3 text-sm leading-6 text-[#6f665c]">
+                Add a writer once and Froogle Reader handles source discovery, updates, and organization.
+              </p>
+            </div>
+
+            <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <FeatureCard
+                icon={<Search className="h-5 w-5" />}
+                title="Find sources quickly"
+                description="Describe a writer or paste a URL, then preview the detected RSS feed or author page before saving it."
+              />
+              <FeatureCard
+                icon={<Inbox className="h-5 w-5" />}
+                title="One main feed"
+                description="See unread articles from every saved writer in a single latest-first inbox."
+              />
+              <FeatureCard
+                icon={<Star className="h-5 w-5" />}
+                title="Save what matters"
+                description="Mark articles as read, favorite standout pieces, and bookmark items you want to return to later."
+              />
+              <FeatureCard
+                icon={<ShieldCheck className="h-5 w-5" />}
+                title="Private accounts"
+                description="Each account keeps its own writers, articles, saved states, and session-backed access."
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className="px-4 py-12 md:px-8">
+          <div className="mx-auto grid max-w-6xl gap-6 md:grid-cols-3">
+            <WorkflowStep
+              icon={<Layers3 className="h-5 w-5" />}
+              title="Collect"
+              description="Bring newsletters, RSS feeds, blogs, publication pages, and individual author pages into one reader."
+            />
+            <WorkflowStep
+              icon={<BellRing className="h-5 w-5" />}
+              title="Check"
+              description="Refresh saved sources on demand and let the reader deduplicate articles by their canonical links."
+            />
+            <WorkflowStep
+              icon={<ExternalLink className="h-5 w-5" />}
+              title="Open"
+              description="Read excerpts in the feed, then open the original article on the publisher site when you are ready."
+            />
+          </div>
+        </section>
+
+        <section id="signin" className="border-t border-[#ded7cc] bg-[#232924] px-4 py-12 text-[#f5f0e8] md:px-8">
+          <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[minmax(0,1fr)_400px] lg:items-start">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-[#f0b29c]">Open your reader</div>
+              <h2 className="mt-2 max-w-xl text-3xl font-semibold tracking-tight">Sign in or create an account to start saving writers.</h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-[#c9d1c7]">
+                Your saved writers and article states persist across sessions, including the Android beta when it is connected
+                to a hosted backend.
+              </p>
+            </div>
+
+            <section className="w-full rounded-lg border border-white/10 bg-white p-5 text-[#20242a] shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-md bg-[#d36b45] text-white">
+                  <Rss className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold">Froogle Reader</h3>
+                  <p className="text-sm text-[#756c61]">Sign in to your reader</p>
+                </div>
+              </div>
+
+              <div className="mt-5 grid grid-cols-2 gap-2 rounded-md bg-[#f6f4ef] p-1">
+                <button className={authModeButton(authMode === "login")} onClick={() => setAuthMode("login")}>
+                  Log in
+                </button>
+                <button className={authModeButton(authMode === "signup")} onClick={() => setAuthMode("signup")}>
+                  Sign up
+                </button>
+              </div>
+
+              <form onSubmit={handleAuth} className="mt-5 grid gap-3">
+                <label className="grid gap-1 text-sm font-medium">
+                  Email
+                  <input
+                    type="email"
+                    value={authEmail}
+                    onChange={(event) => setAuthEmail(event.target.value)}
+                    className="h-11 rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 font-normal outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
+                    autoComplete="email"
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-medium">
+                  Password
+                  <input
+                    type="password"
+                    value={authPassword}
+                    onChange={(event) => setAuthPassword(event.target.value)}
+                    className="h-11 rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 font-normal outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
+                    autoComplete={authMode === "login" ? "current-password" : "new-password"}
+                  />
+                </label>
+
+                {error && (
+                  <div className="rounded-md border border-[#e7b4a2] bg-[#fff4ef] px-3 py-2 text-sm text-[#8a3a25]">
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  disabled={isAuthenticating || !authEmail.trim() || !authPassword}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-4 text-sm font-semibold text-white transition hover:bg-[#263b2f] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isAuthenticating && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {authMode === "login" ? "Log in" : "Create account"}
+                </button>
+              </form>
+            </section>
+          </div>
         </section>
       </main>
     );
@@ -510,7 +637,7 @@ export default function Home() {
                   <Rss className="h-5 w-5" />
                 </div>
                 <div>
-                  <div className="text-lg font-semibold">Writer Reader</div>
+                  <div className="text-lg font-semibold">Froogle Reader</div>
                   <div className="max-w-[180px] truncate text-xs text-[#b9c0b6]" title={authUser.email}>
                     {authUser.email}
                   </div>
@@ -832,7 +959,7 @@ export default function Home() {
                             )}
                             {paywall && (
                               <p className="mt-2 text-xs text-[#80613b]">
-                                {paywall.label} may require a subscription. Writer Reader keeps the feed excerpt and opens
+                                {paywall.label} may require a subscription. Froogle Reader keeps the feed excerpt and opens
                                 the original site for your logged-in access.
                               </p>
                             )}
@@ -982,6 +1109,110 @@ function Metric({ label, value }: { label: string; value: number }) {
     <div className="rounded-md border border-white/10 bg-white/[0.06] p-3">
       <div className="text-2xl font-semibold">{value}</div>
       <div className="text-xs text-[#aeb8ac]">{label}</div>
+    </div>
+  );
+}
+
+function ReaderPreview() {
+  const previewArticles = [
+    {
+      writer: "Maya Srinivasan",
+      title: "Why product teams should read slower",
+      meta: "Essay Room · Today"
+    },
+    {
+      writer: "Daniel Hart",
+      title: "A field note on newsletters, feeds, and attention",
+      meta: "Personal site · Yesterday"
+    },
+    {
+      writer: "Leah Park",
+      title: "The useful middle ground between bookmarking and reading",
+      meta: "RSS feed · May 12"
+    }
+  ];
+
+  return (
+    <div className="rounded-lg border border-[#d8d2c8] bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-[#e6e1d8] p-4">
+        <div className="flex items-center gap-3">
+          <div className="grid h-9 w-9 place-items-center rounded-md bg-[#232924] text-white">
+            <Inbox className="h-4 w-4" />
+          </div>
+          <div>
+            <div className="text-sm font-semibold">New articles</div>
+            <div className="text-xs text-[#756c61]">12 unread from 8 writers</div>
+          </div>
+        </div>
+        <button className="grid h-9 w-9 place-items-center rounded-md border border-[#d8d2c8] text-[#485248]">
+          <RefreshCw className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="grid gap-0 divide-y divide-[#e6e1d8]">
+        {previewArticles.map((article, index) => (
+          <div key={article.title} className={index === 0 ? "bg-white p-4" : "bg-[#fbfaf7] p-4"}>
+            <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-[#766e64]">
+              <span className="inline-flex items-center gap-1 rounded bg-[#edf1ed] px-2 py-1 font-medium text-[#36513f]">
+                <Radio className="h-3 w-3" />
+                {article.writer}
+              </span>
+              <span>{article.meta}</span>
+              {index === 0 && <span className="h-2 w-2 rounded-full bg-[#c65d3f]" />}
+            </div>
+            <div className="text-base font-semibold leading-snug tracking-tight">{article.title}</div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="grid h-8 w-8 place-items-center rounded-md border border-[#d8d2c8] text-[#303830]">
+                <Star className="h-4 w-4" />
+              </span>
+              <span className="grid h-8 w-8 place-items-center rounded-md border border-[#d8d2c8] text-[#303830]">
+                <Bookmark className="h-4 w-4" />
+              </span>
+              <span className="inline-flex h-8 items-center gap-2 rounded-md bg-[#20242a] px-3 text-sm font-medium text-white">
+                <ExternalLink className="h-4 w-4" />
+                Open
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 border-t border-[#e6e1d8] bg-[#f6f4ef] p-3">
+        <MiniMetric value="8" label="Writers" />
+        <MiniMetric value="12" label="Unread" />
+        <MiniMetric value="5" label="Saved" />
+      </div>
+    </div>
+  );
+}
+
+function MiniMetric({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="rounded-md border border-[#d8d2c8] bg-white p-3">
+      <div className="text-lg font-semibold">{value}</div>
+      <div className="text-xs text-[#756c61]">{label}</div>
+    </div>
+  );
+}
+
+function FeatureCard({ icon, title, description }: { icon: ReactNode; title: string; description: string }) {
+  return (
+    <div className="rounded-lg border border-[#d8d2c8] bg-white p-5 shadow-sm">
+      <div className="grid h-10 w-10 place-items-center rounded-md bg-[#edf1ed] text-[#36513f]">{icon}</div>
+      <h3 className="mt-4 text-base font-semibold">{title}</h3>
+      <p className="mt-2 text-sm leading-6 text-[#6f665c]">{description}</p>
+    </div>
+  );
+}
+
+function WorkflowStep({ icon, title, description }: { icon: ReactNode; title: string; description: string }) {
+  return (
+    <div className="flex gap-4">
+      <div className="grid h-11 w-11 shrink-0 place-items-center rounded-md bg-[#d36b45] text-white">{icon}</div>
+      <div>
+        <h3 className="font-semibold">{title}</h3>
+        <p className="mt-1 text-sm leading-6 text-[#6f665c]">{description}</p>
+      </div>
     </div>
   );
 }

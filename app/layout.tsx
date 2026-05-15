@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Writer Reader",
-  description: "A compact reader for following individual writers"
+  title: "Froogle Reader",
+  description: "A focused reader for following individual writers across RSS feeds and author pages"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

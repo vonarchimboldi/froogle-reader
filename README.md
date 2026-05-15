@@ -1,6 +1,6 @@
-# Writer Reader MVP
+# Froogle Reader MVP
 
-A compact Google Reader-like app for following individual writers by RSS/Atom feed URL or author page URL.
+A compact reader for following individual writers by RSS/Atom feed URL or author page URL.
 
 ## Stack
 
@@ -68,7 +68,7 @@ Open `http://localhost:3000`.
 
 ## Accounts and per-user data
 
-Writer Reader now requires an account before the reader loads. Each saved writer
+Froogle Reader now requires an account before the reader loads. Each saved writer
 belongs to the signed-in user, and article queries are filtered through that
 user's writers. This prevents different Android beta users from seeing each
 other's saved sources.
