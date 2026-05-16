@@ -11,6 +11,7 @@ import {
   ExternalLink,
   Filter,
   Inbox,
+  LineChart,
   Layers3,
   Loader2,
   LogOut,
@@ -95,10 +96,47 @@ type SourceLookup = {
 type ArticleFilter = "new" | "all";
 type FeedSelection = "all" | "favorites" | "bookmarks" | string;
 type AuthMode = "login" | "signup";
-type AppView = "reader" | "account" | "about";
+type AppView = "reader" | "account" | "about" | "admin";
 type AuthUser = {
   id: string;
   email: string;
+};
+
+type AdminAnalytics = {
+  totals: {
+    users: number;
+    writers: number;
+    articles: number;
+    activeSessions: number;
+  };
+  users: Array<{
+    id: string;
+    email: string;
+    createdAt: string;
+    updatedAt: string;
+    _count: { writers: number; sessions: number };
+  }>;
+  recentSessions: Array<{
+    id: string;
+    createdAt: string;
+    expiresAt: string;
+    user: { email: string };
+  }>;
+  recentArticles: Array<{
+    id: string;
+    title: string;
+    discoveredAt: string;
+    publishedAt?: string | null;
+    writer: { name: string; user: { email: string } };
+  }>;
+  sourceChecks: Array<{
+    id: string;
+    name: string;
+    sourceUrl: string;
+    lastCheckedAt?: string | null;
+    user: { email: string };
+    _count: { articles: number };
+  }>;
 };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "";
@@ -142,6 +180,9 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [adminAnalytics, setAdminAnalytics] = useState<AdminAnalytics | null>(null);
+  const [isAdminLoading, setIsAdminLoading] = useState(false);
+  const [adminError, setAdminError] = useState<string | null>(null);
 
   const selectedWriter = writers.find((writer) => writer.id === selectedWriterId);
   const isMainFeed = selectedWriterId === "all";
@@ -481,6 +522,27 @@ export default function Home() {
     setActiveView("about");
   }
 
+  async function openAdmin() {
+    setHasOpenedReader(true);
+    setActiveView("admin");
+    if (adminAnalytics || isAdminLoading) return;
+
+    setIsAdminLoading(true);
+    setAdminError(null);
+    try {
+      const response = await fetch(apiUrl("/api/admin/analytics"), {
+        headers: authHeaders(authToken)
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not load analytics.");
+      setAdminAnalytics(data);
+    } catch (analyticsError) {
+      setAdminError(analyticsError instanceof Error ? analyticsError.message : "Could not load analytics.");
+    } finally {
+      setIsAdminLoading(false);
+    }
+  }
+
   if (!authChecked) {
     return (
       <main className="grid min-h-screen place-items-center bg-[#f6f4ef] text-[#20242a]">
@@ -499,6 +561,7 @@ export default function Home() {
         onOpenReader={() => openReaderFeed("all", "all")}
         onOpenSignIn={() => setActiveView("reader")}
         onOpenAccount={openAccount}
+        onOpenAdmin={openAdmin}
         onSignOut={signOut}
       />
     );
@@ -684,6 +747,13 @@ export default function Home() {
                 About
               </button>
               <button
+                onClick={openAdmin}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
+              >
+                <LineChart className="h-4 w-4" />
+                Analytics
+              </button>
+              <button
                 onClick={signOut}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#20242a] px-3 text-sm font-semibold text-white hover:bg-black"
               >
@@ -741,6 +811,24 @@ export default function Home() {
           </div>
         </section>
       </main>
+    );
+  }
+
+  if (activeView === "admin") {
+    return (
+      <AdminAnalyticsPage
+        analytics={adminAnalytics}
+        isLoading={isAdminLoading}
+        error={adminError}
+        onRefresh={() => {
+          setAdminAnalytics(null);
+          openAdmin();
+        }}
+        onOpenReader={() => openReaderFeed("all", "all")}
+        onOpenAccount={openAccount}
+        onOpenAbout={openAbout}
+        onSignOut={signOut}
+      />
     );
   }
 
@@ -912,6 +1000,13 @@ export default function Home() {
                     className="inline-flex h-10 items-center rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
                   >
                     About
+                  </button>
+                  <button
+                    onClick={openAdmin}
+                    className="inline-flex h-10 items-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
+                  >
+                    <LineChart className="h-4 w-4" />
+                    Analytics
                   </button>
                   <button
                     onClick={() => refreshData()}
@@ -1243,12 +1338,14 @@ function AboutPage({
   onOpenReader,
   onOpenSignIn,
   onOpenAccount,
+  onOpenAdmin,
   onSignOut
 }: {
   authUser: AuthUser | null;
   onOpenReader: () => void;
   onOpenSignIn: () => void;
   onOpenAccount: () => void;
+  onOpenAdmin: () => void;
   onSignOut: () => void;
 }) {
   return (
@@ -1280,6 +1377,13 @@ function AboutPage({
                   className="hidden h-10 items-center justify-center rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5] sm:inline-flex"
                 >
                   Account
+                </button>
+                <button
+                  onClick={onOpenAdmin}
+                  className="hidden h-10 items-center justify-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5] md:inline-flex"
+                >
+                  <LineChart className="h-4 w-4" />
+                  Analytics
                 </button>
                 <button
                   onClick={onSignOut}
@@ -1358,6 +1462,203 @@ function AboutPage({
         </div>
       </section>
     </main>
+  );
+}
+
+function AdminAnalyticsPage({
+  analytics,
+  isLoading,
+  error,
+  onRefresh,
+  onOpenReader,
+  onOpenAccount,
+  onOpenAbout,
+  onSignOut
+}: {
+  analytics: AdminAnalytics | null;
+  isLoading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+  onOpenReader: () => void;
+  onOpenAccount: () => void;
+  onOpenAbout: () => void;
+  onSignOut: () => void;
+}) {
+  return (
+    <main className="min-h-screen bg-[#f6f4ef] text-[#20242a]">
+      <header className="border-b border-[#ded7cc] bg-[#fbfaf7]/95 px-4 py-4 backdrop-blur md:px-8">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+          <button onClick={onOpenReader} className="flex min-w-0 items-center gap-3 text-left">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-[#d36b45] text-white">
+              <LineChart className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="truncate text-lg font-semibold">Froogle Reader</div>
+              <div className="hidden text-xs text-[#756c61] sm:block">Analytics</div>
+            </div>
+          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onOpenReader}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
+            >
+              <Inbox className="h-4 w-4" />
+              Reader
+            </button>
+            <button
+              onClick={onOpenAccount}
+              className="hidden h-10 items-center justify-center rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5] sm:inline-flex"
+            >
+              Account
+            </button>
+            <button
+              onClick={onOpenAbout}
+              className="hidden h-10 items-center justify-center rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5] sm:inline-flex"
+            >
+              About
+            </button>
+            <button
+              onClick={onSignOut}
+              className="grid h-10 w-10 place-items-center rounded-md border border-[#d8d2c8] bg-white text-[#485248] hover:bg-[#f1ede5]"
+              title="Sign out"
+              aria-label="Sign out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <section className="px-4 py-8 md:px-8">
+        <div className="mx-auto max-w-6xl">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#8b4b36]">
+                <LineChart className="h-3.5 w-3.5" />
+                Analytics
+              </div>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight">App activity</h1>
+              <p className="mt-2 text-sm leading-6 text-[#6f665c]">
+                Registered users, active sessions, saved sources, and latest article additions.
+              </p>
+            </div>
+            <button
+              onClick={onRefresh}
+              disabled={isLoading}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5] disabled:opacity-60"
+            >
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Refresh
+            </button>
+          </div>
+
+          {error && (
+            <div className="mt-5 rounded-md border border-[#e7b4a2] bg-[#fff4ef] px-3 py-2 text-sm text-[#8a3a25]">
+              {error}
+            </div>
+          )}
+
+          {isLoading && !analytics ? (
+            <div className="mt-6 grid h-72 place-items-center rounded-lg border border-[#d8d2c8] bg-white text-[#756c61]">
+              <span className="inline-flex items-center gap-2">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                Loading analytics
+              </span>
+            </div>
+          ) : analytics ? (
+            <div className="mt-6 grid gap-6">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <SummaryCard icon={<CircleUserRound className="h-4 w-4" />} label="Users" value={String(analytics.totals.users)} />
+                <SummaryCard icon={<Layers3 className="h-4 w-4" />} label="Writers" value={String(analytics.totals.writers)} />
+                <SummaryCard icon={<Inbox className="h-4 w-4" />} label="Articles" value={String(analytics.totals.articles)} />
+                <SummaryCard icon={<Clock3 className="h-4 w-4" />} label="Active sessions" value={String(analytics.totals.activeSessions)} />
+              </div>
+
+              <AdminTable
+                title="Registered users"
+                columns={["Email", "Created", "Writers", "Sessions"]}
+                rows={analytics.users.map((user) => [
+                  user.email,
+                  formatDateTime(user.createdAt),
+                  String(user._count.writers),
+                  String(user._count.sessions)
+                ])}
+              />
+              <AdminTable
+                title="Recent sessions"
+                columns={["Email", "Started", "Expires"]}
+                rows={analytics.recentSessions.map((session) => [
+                  session.user.email,
+                  formatDateTime(session.createdAt),
+                  formatDateTime(session.expiresAt)
+                ])}
+              />
+              <AdminTable
+                title="Latest article additions"
+                columns={["Article", "Writer", "Account", "Added"]}
+                rows={analytics.recentArticles.map((article) => [
+                  article.title,
+                  article.writer.name,
+                  article.writer.user.email,
+                  formatDateTime(article.discoveredAt)
+                ])}
+              />
+              <AdminTable
+                title="Source checks"
+                columns={["Writer", "Account", "Articles", "Last checked"]}
+                rows={analytics.sourceChecks.map((writer) => [
+                  writer.name,
+                  writer.user.email,
+                  String(writer._count.articles),
+                  writer.lastCheckedAt ? formatDateTime(writer.lastCheckedAt) : "Not checked"
+                ])}
+              />
+            </div>
+          ) : null}
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function AdminTable({ title, columns, rows }: { title: string; columns: string[]; rows: string[][] }) {
+  return (
+    <section className="overflow-hidden rounded-lg border border-[#d8d2c8] bg-white shadow-sm">
+      <div className="border-b border-[#e6e1d8] px-4 py-3 text-sm font-semibold">{title}</div>
+      <div className="reader-scrollbar overflow-auto">
+        <table className="w-full min-w-[720px] border-collapse text-sm">
+          <thead className="bg-[#fbfaf7] text-left text-xs uppercase tracking-wide text-[#756c61]">
+            <tr>
+              {columns.map((column) => (
+                <th key={column} className="border-b border-[#e6e1d8] px-4 py-3 font-semibold">
+                  {column}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length ? (
+              rows.map((row, rowIndex) => (
+                <tr key={`${title}-${rowIndex}`} className="border-b border-[#e6e1d8] last:border-b-0">
+                  {row.map((cell, cellIndex) => (
+                    <td key={`${title}-${rowIndex}-${cellIndex}`} className="max-w-[340px] truncate px-4 py-3" title={cell}>
+                      {cell}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td className="px-4 py-6 text-center text-[#756c61]" colSpan={columns.length}>
+                  No data yet
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
