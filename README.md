@@ -128,7 +128,7 @@ For a functional Android beta, set the public API base URL before building the
 mobile assets:
 
 ```bash
-NEXT_PUBLIC_API_BASE_URL="https://your-hosted-writer-reader.example.com"
+NEXT_PUBLIC_API_BASE_URL="https://your-hosted-froogle-reader.example.com"
 ```
 
 On the hosted backend, optionally restrict CORS to Capacitor:
@@ -219,10 +219,10 @@ The poller checks every saved writer source, deduplicates by canonical URL, upda
 
 ## Launch Shortcut
 
-On macOS, double-click `launch-writer-reader.command` from Finder or run:
+On macOS, double-click `launch-froogle-reader.command` from Finder or run:
 
 ```bash
-./launch-writer-reader.command
+./launch-froogle-reader.command
 ```
 
 It starts embedded PostgreSQL when needed, applies migrations, opens the app, and starts the Next.js dev server. If the app is already running, it simply opens `http://127.0.0.1:3000`.

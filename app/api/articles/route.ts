@@ -21,7 +21,7 @@ export async function GET(request: Request) {
         ...(writerId ? { id: writerId } : {})
       }
     },
-    orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }, { discoveredAt: "desc" }],
+    orderBy: [{ discoveredAt: "desc" }, { publishedAt: { sort: "desc", nulls: "last" } }],
     include: {
       writer: {
         select: {

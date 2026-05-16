@@ -33,7 +33,7 @@ export async function discoverSource(inputUrl: string): Promise<DiscoveryResult>
   const response = await fetch(sourceUrl, {
     redirect: "follow",
     headers: {
-      "user-agent": "WriterReaderMVP/0.1 (+https://localhost)",
+      "user-agent": "FroogleReader/0.1 (+https://localhost)",
       accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.9, */*;q=0.8"
     }
   });

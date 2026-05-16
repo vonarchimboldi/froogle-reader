@@ -6,6 +6,7 @@ import {
   Bookmark,
   BookOpen,
   Check,
+  CircleUserRound,
   Clock3,
   ExternalLink,
   Filter,
@@ -94,6 +95,7 @@ type SourceLookup = {
 type ArticleFilter = "new" | "all";
 type FeedSelection = "all" | "favorites" | "bookmarks" | string;
 type AuthMode = "login" | "signup";
+type AppView = "reader" | "account";
 type AuthUser = {
   id: string;
   email: string;
@@ -124,10 +126,12 @@ export default function Home() {
   const [authPassword, setAuthPassword] = useState("");
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  const [hasOpenedReader, setHasOpenedReader] = useState(false);
+  const [activeView, setActiveView] = useState<AppView>("reader");
   const [writers, setWriters] = useState<Writer[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedWriterId, setSelectedWriterId] = useState<FeedSelection>("all");
-  const [articleFilter, setArticleFilter] = useState<ArticleFilter>("new");
+  const [articleFilter, setArticleFilter] = useState<ArticleFilter>("all");
   const [writerDescription, setWriterDescription] = useState("");
   const [isSourceFinderOpen, setIsSourceFinderOpen] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -168,15 +172,20 @@ export default function Home() {
   const unreadCount = useMemo(() => articles.filter((article) => !article.isRead).length, [articles]);
   const favoriteCount = useMemo(() => articles.filter((article) => article.isFavorite).length, [articles]);
   const bookmarkCount = useMemo(() => articles.filter((article) => article.isBookmarked).length, [articles]);
+  const sortedArticles = useMemo(() => [...articles].sort(compareArticlesByLatestUpdate), [articles]);
   const visibleArticles = useMemo(() => {
     const scopedArticles = isWriterFeed
-      ? articles.filter((article) => article.writerId === selectedWriterId || article.writer.id === selectedWriterId)
-      : articles;
+      ? sortedArticles.filter((article) => article.writerId === selectedWriterId || article.writer.id === selectedWriterId)
+      : isFavoritesFeed
+        ? sortedArticles.filter((article) => article.isFavorite)
+        : isBookmarksFeed
+          ? sortedArticles.filter((article) => article.isBookmarked)
+          : sortedArticles;
 
     return isMainFeed && articleFilter === "new"
       ? scopedArticles.filter((article) => !article.isRead)
       : scopedArticles;
-  }, [articleFilter, articles, isMainFeed, isWriterFeed, selectedWriterId]);
+  }, [articleFilter, isBookmarksFeed, isFavoritesFeed, isMainFeed, isWriterFeed, selectedWriterId, sortedArticles]);
 
   const signOut = useCallback(async () => {
     const token = authToken;
@@ -194,10 +203,13 @@ export default function Home() {
     setArticles([]);
     setPreview(null);
     setSelectedWriterId("all");
+    setArticleFilter("all");
     setIsSourceFinderOpen(false);
+    setHasOpenedReader(false);
+    setActiveView("reader");
   }, [authToken]);
 
-  const refreshData = useCallback(async (writerId: FeedSelection = selectedWriterId, token = authToken) => {
+  const refreshData = useCallback(async (token = authToken) => {
     if (!token) {
       setIsLoading(false);
       return;
@@ -205,15 +217,8 @@ export default function Home() {
 
     setIsLoading(true);
     try {
-      const articleParams = new URLSearchParams();
-      if (writerId === "favorites") articleParams.set("filter", "favorites");
-      if (writerId === "bookmarks") articleParams.set("filter", "bookmarks");
-      if (writerId !== "all" && writerId !== "favorites" && writerId !== "bookmarks") {
-        articleParams.set("writerId", writerId);
-      }
-      const articlePath = `/api/articles${articleParams.size ? `?${articleParams.toString()}` : ""}`;
       const writersResponse = await fetch(apiUrl("/api/writers"), { headers: authHeaders(token) });
-      const articlesResponse = await fetch(apiUrl(articlePath), {
+      const articlesResponse = await fetch(apiUrl("/api/articles"), {
         headers: authHeaders(token)
       });
 
@@ -231,7 +236,7 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
-  }, [authToken, selectedWriterId, signOut]);
+  }, [authToken, signOut]);
 
   useEffect(() => {
     const token = localStorage.getItem("writerReaderAuthToken");
@@ -247,7 +252,7 @@ export default function Home() {
         if (!response.ok) throw new Error("Session expired");
         const data = await response.json();
         setAuthUser(data.user);
-        await refreshData("all", token);
+        await refreshData(token);
       })
       .catch(() => {
         localStorage.removeItem("writerReaderAuthToken");
@@ -260,8 +265,8 @@ export default function Home() {
 
   useEffect(() => {
     if (!authUser || !authToken) return;
-    refreshData(selectedWriterId).catch(() => setError("Could not load the reader."));
-  }, [authToken, authUser, refreshData, selectedWriterId]);
+    refreshData().catch(() => setError("Could not load the reader."));
+  }, [authToken, authUser, refreshData]);
 
   async function handleAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -281,8 +286,12 @@ export default function Home() {
       localStorage.setItem("writerReaderAuthToken", data.token);
       setAuthToken(data.token);
       setAuthUser(data.user);
+      setHasOpenedReader(true);
+      setActiveView("reader");
+      setSelectedWriterId("all");
+      setArticleFilter("all");
       setAuthPassword("");
-      await refreshData("all", data.token);
+      await refreshData(data.token);
     } catch (authError) {
       setError(authError instanceof Error ? authError.message : "Authentication failed.");
     } finally {
@@ -335,7 +344,7 @@ export default function Home() {
       setWriterDescription("");
       setIsSourceFinderOpen(false);
       setSelectedWriterId(data.id);
-      await refreshData(data.id);
+      await refreshData();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Could not save writer.");
     } finally {
@@ -358,7 +367,7 @@ export default function Home() {
 
     const nextSelection = selectedWriterId === writerId ? "all" : selectedWriterId;
     setSelectedWriterId(nextSelection);
-    await refreshData(nextSelection);
+    await refreshData();
   }
 
   async function checkSourcesNow() {
@@ -428,6 +437,22 @@ export default function Home() {
     }
   }
 
+  function openReader() {
+    setHasOpenedReader(true);
+    setActiveView("reader");
+  }
+
+  function openReaderFeed(feed: FeedSelection, filter: ArticleFilter = "all") {
+    setSelectedWriterId(feed);
+    setArticleFilter(feed === "all" ? filter : "all");
+    openReader();
+  }
+
+  function openAccount() {
+    setHasOpenedReader(true);
+    setActiveView("account");
+  }
+
   if (!authChecked) {
     return (
       <main className="grid min-h-screen place-items-center bg-[#f6f4ef] text-[#20242a]">
@@ -439,7 +464,7 @@ export default function Home() {
     );
   }
 
-  if (!authUser) {
+  if (!authUser || !hasOpenedReader) {
     return (
       <main className="min-h-screen bg-[#f6f4ef] text-[#20242a]">
         <header className="border-b border-[#ded7cc] bg-[#fbfaf7]/95 px-4 py-4 backdrop-blur md:px-8">
@@ -453,12 +478,21 @@ export default function Home() {
                 <div className="hidden text-xs text-[#756c61] sm:block">Follow your favorite writers</div>
               </div>
             </div>
-            <a
-              href="#signin"
-              className="inline-flex h-10 items-center justify-center rounded-md bg-[#20242a] px-4 text-sm font-semibold text-white hover:bg-black"
-            >
-              Open reader
-            </a>
+            {authUser ? (
+              <button
+                onClick={() => openReaderFeed("all", "all")}
+                className="inline-flex h-10 items-center justify-center rounded-md bg-[#20242a] px-4 text-sm font-semibold text-white hover:bg-black"
+              >
+                Open reader
+              </button>
+            ) : (
+              <a
+                href="#signin"
+                className="inline-flex h-10 items-center justify-center rounded-md bg-[#20242a] px-4 text-sm font-semibold text-white hover:bg-black"
+              >
+                Open reader
+              </a>
+            )}
           </div>
         </header>
 
@@ -477,13 +511,23 @@ export default function Home() {
                 and gives you a clean place to read, save, and revisit the work that matters.
               </p>
               <div className="mt-7 flex flex-wrap gap-3">
-                <a
-                  href="#signin"
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-5 text-sm font-semibold text-white hover:bg-[#263b2f]"
-                >
-                  <Rss className="h-4 w-4" />
-                  Start reading
-                </a>
+                {authUser ? (
+                  <button
+                    onClick={() => openReaderFeed("all", "all")}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-5 text-sm font-semibold text-white hover:bg-[#263b2f]"
+                  >
+                    <Rss className="h-4 w-4" />
+                    Open reader
+                  </button>
+                ) : (
+                  <a
+                    href="#signin"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-5 text-sm font-semibold text-white hover:bg-[#263b2f]"
+                  >
+                    <Rss className="h-4 w-4" />
+                    Start reading
+                  </a>
+                )}
                 <a
                   href="#features"
                   className="inline-flex h-11 items-center justify-center rounded-md border border-[#d8d2c8] bg-white px-5 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
@@ -493,7 +537,15 @@ export default function Home() {
               </div>
             </div>
 
-            <ReaderPreview />
+            <ReaderPreview
+              articles={sortedArticles}
+              isLoading={isLoading}
+              isSignedIn={Boolean(authUser)}
+              onOpenReader={() => openReaderFeed("all", "all")}
+              onOpenUnread={() => openReaderFeed("all", "new")}
+              onOpenSaved={() => openReaderFeed("bookmarks")}
+              onOpenWriter={(writerId) => openReaderFeed(writerId)}
+            />
           </div>
         </section>
 
@@ -570,56 +622,170 @@ export default function Home() {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold">Froogle Reader</h3>
-                  <p className="text-sm text-[#756c61]">Sign in to your reader</p>
+                  <p className="text-sm text-[#756c61]">
+                    {authUser ? "You are signed in" : "Sign in to your reader"}
+                  </p>
                 </div>
               </div>
 
-              <div className="mt-5 grid grid-cols-2 gap-2 rounded-md bg-[#f6f4ef] p-1">
-                <button className={authModeButton(authMode === "login")} onClick={() => setAuthMode("login")}>
-                  Log in
-                </button>
-                <button className={authModeButton(authMode === "signup")} onClick={() => setAuthMode("signup")}>
-                  Sign up
-                </button>
-              </div>
-
-              <form onSubmit={handleAuth} className="mt-5 grid gap-3">
-                <label className="grid gap-1 text-sm font-medium">
-                  Email
-                  <input
-                    type="email"
-                    value={authEmail}
-                    onChange={(event) => setAuthEmail(event.target.value)}
-                    className="h-11 rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 font-normal outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
-                    autoComplete="email"
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Password
-                  <input
-                    type="password"
-                    value={authPassword}
-                    onChange={(event) => setAuthPassword(event.target.value)}
-                    className="h-11 rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 font-normal outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
-                    autoComplete={authMode === "login" ? "current-password" : "new-password"}
-                  />
-                </label>
-
-                {error && (
-                  <div className="rounded-md border border-[#e7b4a2] bg-[#fff4ef] px-3 py-2 text-sm text-[#8a3a25]">
-                    {error}
+              {authUser ? (
+                <div className="mt-5 grid gap-3">
+                  <div className="rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 py-2 text-sm text-[#5f574f]">
+                    Signed in as <span className="font-semibold text-[#20242a]">{authUser.email}</span>
                   </div>
-                )}
+                  <button
+                    onClick={() => openReaderFeed("all", "all")}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-4 text-sm font-semibold text-white transition hover:bg-[#263b2f]"
+                  >
+                    <Rss className="h-4 w-4" />
+                    Open reader
+                  </button>
+                  <button
+                    onClick={signOut}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-4 text-sm font-semibold text-[#485248] transition hover:bg-[#f1ede5]"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign out
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="mt-5 grid grid-cols-2 gap-2 rounded-md bg-[#f6f4ef] p-1">
+                    <button className={authModeButton(authMode === "login")} onClick={() => setAuthMode("login")}>
+                      Log in
+                    </button>
+                    <button className={authModeButton(authMode === "signup")} onClick={() => setAuthMode("signup")}>
+                      Sign up
+                    </button>
+                  </div>
 
-                <button
-                  disabled={isAuthenticating || !authEmail.trim() || !authPassword}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-4 text-sm font-semibold text-white transition hover:bg-[#263b2f] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isAuthenticating && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {authMode === "login" ? "Log in" : "Create account"}
-                </button>
-              </form>
+                  <form onSubmit={handleAuth} className="mt-5 grid gap-3">
+                    <label className="grid gap-1 text-sm font-medium">
+                      Email
+                      <input
+                        type="email"
+                        value={authEmail}
+                        onChange={(event) => setAuthEmail(event.target.value)}
+                        className="h-11 rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 font-normal outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
+                        autoComplete="email"
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm font-medium">
+                      Password
+                      <input
+                        type="password"
+                        value={authPassword}
+                        onChange={(event) => setAuthPassword(event.target.value)}
+                        className="h-11 rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 font-normal outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
+                        autoComplete={authMode === "login" ? "current-password" : "new-password"}
+                      />
+                    </label>
+
+                    {error && (
+                      <div className="rounded-md border border-[#e7b4a2] bg-[#fff4ef] px-3 py-2 text-sm text-[#8a3a25]">
+                        {error}
+                      </div>
+                    )}
+
+                    <button
+                      disabled={isAuthenticating || !authEmail.trim() || !authPassword}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-4 text-sm font-semibold text-white transition hover:bg-[#263b2f] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isAuthenticating && <Loader2 className="h-4 w-4 animate-spin" />}
+                      {authMode === "login" ? "Log in" : "Create account"}
+                    </button>
+                  </form>
+                </>
+              )}
             </section>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (activeView === "account") {
+    return (
+      <main className="min-h-screen bg-[#f6f4ef] text-[#20242a]">
+        <header className="border-b border-[#ded7cc] bg-[#fbfaf7]/95 px-4 py-4 backdrop-blur md:px-8">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+            <button
+              onClick={openReader}
+              className="flex min-w-0 items-center gap-3 text-left"
+              aria-label="Open reader"
+            >
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-[#d36b45] text-white">
+                <Rss className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-lg font-semibold">Froogle Reader</div>
+                <div className="hidden text-xs text-[#756c61] sm:block">Account</div>
+              </div>
+            </button>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={openReader}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
+              >
+                <Inbox className="h-4 w-4" />
+                Reader
+              </button>
+              <button
+                onClick={signOut}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#20242a] px-3 text-sm font-semibold text-white hover:bg-black"
+              >
+                <LogOut className="h-4 w-4" />
+                Sign out
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <section className="px-4 py-8 md:px-8">
+          <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#8b4b36]">
+                <CircleUserRound className="h-3.5 w-3.5" />
+                Account
+              </div>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight">Your reader account</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6f665c]">
+                Manage the signed-in session for this browser and return to your saved writer feeds.
+              </p>
+
+              <div className="mt-6 overflow-hidden rounded-lg border border-[#d8d2c8] bg-white shadow-sm">
+                <div className="border-b border-[#e6e1d8] p-5">
+                  <div className="text-sm font-semibold">Profile</div>
+                  <div className="mt-3 grid gap-1 text-sm">
+                    <div className="text-[#756c61]">Email</div>
+                    <div className="break-all font-medium">{authUser.email}</div>
+                  </div>
+                </div>
+                <div className="grid gap-3 p-5 sm:grid-cols-2">
+                  <button
+                    onClick={openReader}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-4 text-sm font-semibold text-white hover:bg-[#263b2f]"
+                  >
+                    <Inbox className="h-4 w-4" />
+                    Back to reader
+                  </button>
+                  <button
+                    onClick={signOut}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-4 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign out
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <aside className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+              <SummaryCard icon={<Layers3 className="h-4 w-4" />} label="Writers" value={`${writers.length} saved`} />
+              <SummaryCard icon={<Inbox className="h-4 w-4" />} label="Unread" value={`${unreadCount} articles`} />
+              <SummaryCard icon={<Bookmark className="h-4 w-4" />} label="Bookmarked" value={`${bookmarkCount} articles`} />
+            </aside>
           </div>
         </section>
       </main>
@@ -664,7 +830,7 @@ export default function Home() {
               className={sidebarButton(selectedWriterId === "all")}
               onClick={() => {
                 setSelectedWriterId("all");
-                setArticleFilter("new");
+                setArticleFilter("all");
               }}
             >
               <span className="flex min-w-0 items-center gap-2">
@@ -783,6 +949,13 @@ export default function Home() {
                     Check sources
                   </button>
                   <button
+                    onClick={openAccount}
+                    className="inline-flex h-10 items-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
+                  >
+                    <CircleUserRound className="h-4 w-4" />
+                    Account
+                  </button>
+                  <button
                     onClick={() => refreshData()}
                     className="grid h-10 w-10 place-items-center rounded-md border border-[#d8d2c8] bg-white text-[#485248] hover:bg-[#f1ede5]"
                     title="Refresh"
@@ -843,7 +1016,7 @@ export default function Home() {
                 onChange={(event) => {
                   const nextSelection = event.target.value;
                   setSelectedWriterId(nextSelection);
-                  setArticleFilter(nextSelection === "all" ? "new" : "all");
+                  setArticleFilter("all");
                 }}
                 className="h-10 min-w-0 flex-1 rounded-md border border-[#d8d2c8] bg-white px-3 text-sm outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
                 aria-label="Filter by writer"
@@ -1113,24 +1286,68 @@ function Metric({ label, value }: { label: string; value: number }) {
   );
 }
 
-function ReaderPreview() {
-  const previewArticles = [
+function ReaderPreview({
+  articles,
+  isLoading,
+  isSignedIn,
+  onOpenReader,
+  onOpenUnread,
+  onOpenSaved,
+  onOpenWriter
+}: {
+  articles: Article[];
+  isLoading: boolean;
+  isSignedIn: boolean;
+  onOpenReader: () => void;
+  onOpenUnread: () => void;
+  onOpenSaved: () => void;
+  onOpenWriter: (writerId: string) => void;
+}) {
+  const fallbackArticles = [
     {
+      id: "fallback-1",
+      writerId: "",
       writer: "Maya Srinivasan",
       title: "Why product teams should read slower",
-      meta: "Essay Room · Today"
+      meta: "Essay Room · Today",
+      url: "#signin",
+      isUnread: true
     },
     {
+      id: "fallback-2",
+      writerId: "",
       writer: "Daniel Hart",
       title: "A field note on newsletters, feeds, and attention",
-      meta: "Personal site · Yesterday"
+      meta: "Personal site · Yesterday",
+      url: "#signin",
+      isUnread: false
     },
     {
+      id: "fallback-3",
+      writerId: "",
       writer: "Leah Park",
       title: "The useful middle ground between bookmarking and reading",
-      meta: "RSS feed · May 12"
+      meta: "RSS feed · May 12",
+      url: "#signin",
+      isUnread: false
     }
   ];
+  const previewArticles = isSignedIn && articles.length > 0
+    ? articles.slice(0, 3).map((article) => ({
+        id: article.id,
+        writerId: article.writer.id,
+        writer: article.writer.name,
+        title: article.title,
+        meta: `${article.writer.publication ?? "Saved source"} · ${formatDate(article.discoveredAt)}`,
+        url: article.url,
+        isUnread: !article.isRead
+      }))
+    : fallbackArticles;
+  const unreadCount = isSignedIn ? articles.filter((article) => !article.isRead).length : 12;
+  const writerCount = isSignedIn ? new Set(articles.map((article) => article.writer.id)).size : 8;
+  const savedCount = isSignedIn
+    ? articles.filter((article) => article.isFavorite || article.isBookmarked).length
+    : 5;
 
   return (
     <div className="rounded-lg border border-[#d8d2c8] bg-white shadow-sm">
@@ -1140,58 +1357,104 @@ function ReaderPreview() {
             <Inbox className="h-4 w-4" />
           </div>
           <div>
-            <div className="text-sm font-semibold">New articles</div>
-            <div className="text-xs text-[#756c61]">12 unread from 8 writers</div>
+            <div className="text-sm font-semibold">{isSignedIn ? "Latest articles" : "New articles"}</div>
+            <div className="text-xs text-[#756c61]">
+              {isSignedIn ? `${unreadCount} unread from ${writerCount} writers` : "12 unread from 8 writers"}
+            </div>
           </div>
         </div>
-        <button className="grid h-9 w-9 place-items-center rounded-md border border-[#d8d2c8] text-[#485248]">
-          <RefreshCw className="h-4 w-4" />
+        <button
+          onClick={onOpenReader}
+          className="grid h-9 w-9 place-items-center rounded-md border border-[#d8d2c8] text-[#485248] hover:bg-[#f1ede5]"
+          aria-label="Open reader"
+          title="Open reader"
+        >
+          <ExternalLink className="h-4 w-4" />
         </button>
       </div>
 
       <div className="grid gap-0 divide-y divide-[#e6e1d8]">
         {previewArticles.map((article, index) => (
-          <div key={article.title} className={index === 0 ? "bg-white p-4" : "bg-[#fbfaf7] p-4"}>
+          <div key={article.id} className={index === 0 ? "bg-white p-4" : "bg-[#fbfaf7] p-4"}>
             <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-[#766e64]">
-              <span className="inline-flex items-center gap-1 rounded bg-[#edf1ed] px-2 py-1 font-medium text-[#36513f]">
+              <button
+                onClick={() => article.writerId ? onOpenWriter(article.writerId) : onOpenReader()}
+                className="inline-flex items-center gap-1 rounded bg-[#edf1ed] px-2 py-1 font-medium text-[#36513f] hover:bg-[#dfe8df]"
+              >
                 <Radio className="h-3 w-3" />
                 {article.writer}
-              </span>
+              </button>
               <span>{article.meta}</span>
-              {index === 0 && <span className="h-2 w-2 rounded-full bg-[#c65d3f]" />}
+              {article.isUnread && (
+                <span className="h-2 w-2 rounded-full bg-[#c65d3f]" title="Unread" />
+              )}
             </div>
-            <div className="text-base font-semibold leading-snug tracking-tight">{article.title}</div>
+            <a
+              href={article.url}
+              target={isSignedIn ? "_blank" : undefined}
+              rel={isSignedIn ? "noreferrer" : undefined}
+              className="block text-base font-semibold leading-snug tracking-tight hover:text-[#8b4b36]"
+            >
+              {article.title}
+            </a>
             <div className="mt-3 flex flex-wrap gap-2">
-              <span className="grid h-8 w-8 place-items-center rounded-md border border-[#d8d2c8] text-[#303830]">
+              <button
+                onClick={onOpenSaved}
+                className="grid h-8 w-8 place-items-center rounded-md border border-[#d8d2c8] text-[#303830] hover:bg-[#f1ede5]"
+                aria-label="Open saved articles"
+                title="Open saved articles"
+              >
                 <Star className="h-4 w-4" />
-              </span>
-              <span className="grid h-8 w-8 place-items-center rounded-md border border-[#d8d2c8] text-[#303830]">
+              </button>
+              <button
+                onClick={onOpenSaved}
+                className="grid h-8 w-8 place-items-center rounded-md border border-[#d8d2c8] text-[#303830] hover:bg-[#f1ede5]"
+                aria-label="Open saved articles"
+                title="Open saved articles"
+              >
                 <Bookmark className="h-4 w-4" />
-              </span>
-              <span className="inline-flex h-8 items-center gap-2 rounded-md bg-[#20242a] px-3 text-sm font-medium text-white">
+              </button>
+              <a
+                href={article.url}
+                target={isSignedIn ? "_blank" : undefined}
+                rel={isSignedIn ? "noreferrer" : undefined}
+                className="inline-flex h-8 items-center gap-2 rounded-md bg-[#20242a] px-3 text-sm font-medium text-white hover:bg-black"
+              >
                 <ExternalLink className="h-4 w-4" />
                 Open
-              </span>
+              </a>
             </div>
           </div>
         ))}
+
+        {isSignedIn && isLoading && (
+          <div className="grid h-24 place-items-center bg-[#fbfaf7] text-sm text-[#756c61]">
+            <span className="inline-flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading latest articles
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-3 gap-2 border-t border-[#e6e1d8] bg-[#f6f4ef] p-3">
-        <MiniMetric value="8" label="Writers" />
-        <MiniMetric value="12" label="Unread" />
-        <MiniMetric value="5" label="Saved" />
+        <MiniMetric value={String(writerCount)} label="Writers" onClick={onOpenReader} />
+        <MiniMetric value={String(unreadCount)} label="Unread" onClick={onOpenUnread} />
+        <MiniMetric value={String(savedCount)} label="Saved" onClick={onOpenSaved} />
       </div>
     </div>
   );
 }
 
-function MiniMetric({ value, label }: { value: string; label: string }) {
+function MiniMetric({ value, label, onClick }: { value: string; label: string; onClick: () => void }) {
   return (
-    <div className="rounded-md border border-[#d8d2c8] bg-white p-3">
+    <button
+      onClick={onClick}
+      className="rounded-md border border-[#d8d2c8] bg-white p-3 text-left hover:bg-[#f1ede5]"
+    >
       <div className="text-lg font-semibold">{value}</div>
       <div className="text-xs text-[#756c61]">{label}</div>
-    </div>
+    </button>
   );
 }
 
@@ -1289,4 +1552,16 @@ function formatDate(value?: string | null) {
     day: "numeric",
     year: "numeric"
   }).format(date);
+}
+
+function compareArticlesByLatestUpdate(a: Article, b: Article) {
+  return articleSortTime(b) - articleSortTime(a);
+}
+
+function articleSortTime(article: Article) {
+  const discoveredTime = new Date(article.discoveredAt).getTime();
+  if (!Number.isNaN(discoveredTime)) return discoveredTime;
+
+  const publishedTime = new Date(article.publishedAt ?? "").getTime();
+  return Number.isNaN(publishedTime) ? 0 : publishedTime;
 }

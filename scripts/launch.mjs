@@ -66,7 +66,7 @@ function openApp() {
 
 async function main() {
   if (await isPortOpen(3000)) {
-    console.log(`Writer Reader is already running at ${appUrl}`);
+    console.log(`Froogle Reader is already running at ${appUrl}`);
     openApp();
     return;
   }
@@ -101,7 +101,7 @@ async function main() {
 
   openApp();
 
-  console.log(`Starting Writer Reader at ${appUrl}`);
+  console.log(`Starting Froogle Reader at ${appUrl}`);
   await run(nodeBin, ["node_modules/.bin/next", "dev", "-H", "127.0.0.1", "-p", "3000"]);
   stopDb();
 }
