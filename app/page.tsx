@@ -138,6 +138,7 @@ export default function Home() {
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
+  const [hasAutoCheckedSources, setHasAutoCheckedSources] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -173,6 +174,8 @@ export default function Home() {
   const favoriteCount = useMemo(() => articles.filter((article) => article.isFavorite).length, [articles]);
   const bookmarkCount = useMemo(() => articles.filter((article) => article.isBookmarked).length, [articles]);
   const sortedArticles = useMemo(() => [...articles].sort(compareArticlesByLatestUpdate), [articles]);
+  const latestSourceCheckTime = useMemo(() => newestWriterCheckTime(writers), [writers]);
+  const sourceCheckLabel = latestSourceCheckTime ? formatDateTime(latestSourceCheckTime) : "Not checked yet";
   const visibleArticles = useMemo(() => {
     const scopedArticles = isWriterFeed
       ? sortedArticles.filter((article) => article.writerId === selectedWriterId || article.writer.id === selectedWriterId)
@@ -207,6 +210,7 @@ export default function Home() {
     setIsSourceFinderOpen(false);
     setHasOpenedReader(false);
     setActiveView("reader");
+    setHasAutoCheckedSources(false);
   }, [authToken]);
 
   const refreshData = useCallback(async (token = authToken) => {
@@ -372,27 +376,45 @@ export default function Home() {
     await refreshData();
   }
 
-  async function checkSourcesNow() {
+  const checkSourcesNow = useCallback(async (options: { silent?: boolean } = {}) => {
     setIsPolling(true);
-    setError(null);
-    setNotice(null);
+    if (!options.silent) {
+      setError(null);
+      setNotice(null);
+    }
 
     try {
       const response = await fetch(apiUrl("/api/poll"), { method: "POST", headers: authHeaders(authToken) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not check sources.");
       await refreshData();
-      setNotice(
-        `Checked ${data.checked} source${data.checked === 1 ? "" : "s"}; added ${data.created} new article${
-          data.created === 1 ? "" : "s"
-        }.${data.failures?.length ? ` ${data.failures.length} failed.` : ""}`
-      );
+      if (!options.silent || data.created > 0 || data.failures?.length) {
+        setNotice(
+          `Checked ${data.checked} source${data.checked === 1 ? "" : "s"}; added ${data.created} new article${
+            data.created === 1 ? "" : "s"
+          }.${data.failures?.length ? ` ${data.failures.length} failed.` : ""}`
+        );
+      }
     } catch (pollError) {
       setError(pollError instanceof Error ? pollError.message : "Could not check sources.");
     } finally {
       setIsPolling(false);
     }
-  }
+  }, [authToken, refreshData]);
+
+  useEffect(() => {
+    if (!authUser || !authToken || activeView !== "reader" || isLoading || hasAutoCheckedSources || writers.length === 0) {
+      return;
+    }
+
+    const sourceCheckIsStale =
+      !latestSourceCheckTime || Date.now() - latestSourceCheckTime.getTime() > 60 * 60 * 1000;
+
+    setHasAutoCheckedSources(true);
+    if (sourceCheckIsStale) {
+      checkSourcesNow({ silent: true }).catch(() => undefined);
+    }
+  }, [activeView, authToken, authUser, checkSourcesNow, hasAutoCheckedSources, isLoading, latestSourceCheckTime, writers.length]);
 
   async function toggleRead(article: Article) {
     const nextIsRead = !article.isRead;
@@ -871,7 +893,7 @@ export default function Home() {
                     Add writer
                   </button>
                   <button
-                    onClick={checkSourcesNow}
+                    onClick={() => checkSourcesNow()}
                     disabled={isPolling || writers.length === 0}
                     className="inline-flex h-10 items-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5] disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -995,7 +1017,7 @@ export default function Home() {
                 <SummaryCard
                   icon={<Clock3 className="h-4 w-4" />}
                   label="Last checked"
-                  value="Mixed sources"
+                  value={isPolling ? "Checking sources..." : sourceCheckLabel}
                 />
               </div>
             </div>
@@ -1614,6 +1636,29 @@ function formatDate(value?: string | null) {
     day: "numeric",
     year: "numeric"
   }).format(date);
+}
+
+function formatDateTime(value?: string | Date | null) {
+  if (!value) return "unknown";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "unknown";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function newestWriterCheckTime(writers: Writer[]) {
+  const latest = writers.reduce((max, writer) => {
+    if (!writer.lastCheckedAt) return max;
+    const time = new Date(writer.lastCheckedAt).getTime();
+    return Number.isNaN(time) ? max : Math.max(max, time);
+  }, 0);
+
+  return latest ? new Date(latest) : null;
 }
 
 function compareArticlesByLatestUpdate(a: Article, b: Article) {
