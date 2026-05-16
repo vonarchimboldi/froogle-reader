@@ -95,7 +95,7 @@ type SourceLookup = {
 type ArticleFilter = "new" | "all";
 type FeedSelection = "all" | "favorites" | "bookmarks" | string;
 type AuthMode = "login" | "signup";
-type AppView = "reader" | "account";
+type AppView = "reader" | "account" | "about";
 type AuthUser = {
   id: string;
   email: string;
@@ -252,6 +252,8 @@ export default function Home() {
         if (!response.ok) throw new Error("Session expired");
         const data = await response.json();
         setAuthUser(data.user);
+        setHasOpenedReader(true);
+        setActiveView("reader");
         await refreshData(token);
       })
       .catch(() => {
@@ -453,6 +455,10 @@ export default function Home() {
     setActiveView("account");
   }
 
+  function openAbout() {
+    setActiveView("about");
+  }
+
   if (!authChecked) {
     return (
       <main className="grid min-h-screen place-items-center bg-[#f6f4ef] text-[#20242a]">
@@ -464,7 +470,19 @@ export default function Home() {
     );
   }
 
-  if (!authUser || !hasOpenedReader) {
+  if (activeView === "about") {
+    return (
+      <AboutPage
+        authUser={authUser}
+        onOpenReader={() => openReaderFeed("all", "all")}
+        onOpenSignIn={() => setActiveView("reader")}
+        onOpenAccount={openAccount}
+        onSignOut={signOut}
+      />
+    );
+  }
+
+  if (!authUser) {
     return (
       <main className="min-h-screen bg-[#f6f4ef] text-[#20242a]">
         <header className="border-b border-[#ded7cc] bg-[#fbfaf7]/95 px-4 py-4 backdrop-blur md:px-8">
@@ -478,21 +496,18 @@ export default function Home() {
                 <div className="hidden text-xs text-[#756c61] sm:block">Follow your favorite writers</div>
               </div>
             </div>
-            {authUser ? (
-              <button
-                onClick={() => openReaderFeed("all", "all")}
-                className="inline-flex h-10 items-center justify-center rounded-md bg-[#20242a] px-4 text-sm font-semibold text-white hover:bg-black"
-              >
-                Open reader
-              </button>
-            ) : (
-              <a
-                href="#signin"
-                className="inline-flex h-10 items-center justify-center rounded-md bg-[#20242a] px-4 text-sm font-semibold text-white hover:bg-black"
-              >
-                Open reader
-              </a>
-            )}
+            <a
+              href="#signin"
+              className="inline-flex h-10 items-center justify-center rounded-md bg-[#20242a] px-4 text-sm font-semibold text-white hover:bg-black"
+            >
+              Open reader
+            </a>
+            <button
+              onClick={openAbout}
+              className="hidden h-10 items-center justify-center rounded-md border border-[#d8d2c8] bg-white px-4 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5] sm:inline-flex"
+            >
+              About
+            </button>
           </div>
         </header>
 
@@ -511,29 +526,19 @@ export default function Home() {
                 and gives you a clean place to read, save, and revisit the work that matters.
               </p>
               <div className="mt-7 flex flex-wrap gap-3">
-                {authUser ? (
-                  <button
-                    onClick={() => openReaderFeed("all", "all")}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-5 text-sm font-semibold text-white hover:bg-[#263b2f]"
-                  >
-                    <Rss className="h-4 w-4" />
-                    Open reader
-                  </button>
-                ) : (
-                  <a
-                    href="#signin"
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-5 text-sm font-semibold text-white hover:bg-[#263b2f]"
-                  >
-                    <Rss className="h-4 w-4" />
-                    Start reading
-                  </a>
-                )}
                 <a
-                  href="#features"
+                  href="#signin"
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-5 text-sm font-semibold text-white hover:bg-[#263b2f]"
+                >
+                  <Rss className="h-4 w-4" />
+                  Start reading
+                </a>
+                <button
+                  onClick={openAbout}
                   className="inline-flex h-11 items-center justify-center rounded-md border border-[#d8d2c8] bg-white px-5 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
                 >
                   See features
-                </a>
+                </button>
               </div>
             </div>
 
@@ -545,61 +550,6 @@ export default function Home() {
               onOpenUnread={() => openReaderFeed("all", "new")}
               onOpenSaved={() => openReaderFeed("bookmarks")}
               onOpenWriter={(writerId) => openReaderFeed(writerId)}
-            />
-          </div>
-        </section>
-
-        <section id="features" className="border-y border-[#ded7cc] bg-[#fbfaf7] px-4 py-12 md:px-8">
-          <div className="mx-auto max-w-6xl">
-            <div className="max-w-2xl">
-              <div className="text-xs font-semibold uppercase tracking-wide text-[#8b4b36]">Features</div>
-              <h2 className="mt-2 text-3xl font-semibold tracking-tight">Built for focused writer discovery.</h2>
-              <p className="mt-3 text-sm leading-6 text-[#6f665c]">
-                Add a writer once and Froogle Reader handles source discovery, updates, and organization.
-              </p>
-            </div>
-
-            <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <FeatureCard
-                icon={<Search className="h-5 w-5" />}
-                title="Find sources quickly"
-                description="Describe a writer or paste a URL, then preview the detected RSS feed or author page before saving it."
-              />
-              <FeatureCard
-                icon={<Inbox className="h-5 w-5" />}
-                title="One main feed"
-                description="See unread articles from every saved writer in a single latest-first inbox."
-              />
-              <FeatureCard
-                icon={<Star className="h-5 w-5" />}
-                title="Save what matters"
-                description="Mark articles as read, favorite standout pieces, and bookmark items you want to return to later."
-              />
-              <FeatureCard
-                icon={<ShieldCheck className="h-5 w-5" />}
-                title="Private accounts"
-                description="Each account keeps its own writers, articles, saved states, and session-backed access."
-              />
-            </div>
-          </div>
-        </section>
-
-        <section className="px-4 py-12 md:px-8">
-          <div className="mx-auto grid max-w-6xl gap-6 md:grid-cols-3">
-            <WorkflowStep
-              icon={<Layers3 className="h-5 w-5" />}
-              title="Collect"
-              description="Bring newsletters, RSS feeds, blogs, publication pages, and individual author pages into one reader."
-            />
-            <WorkflowStep
-              icon={<BellRing className="h-5 w-5" />}
-              title="Check"
-              description="Refresh saved sources on demand and let the reader deduplicate articles by their canonical links."
-            />
-            <WorkflowStep
-              icon={<ExternalLink className="h-5 w-5" />}
-              title="Open"
-              description="Read excerpts in the feed, then open the original article on the publisher site when you are ready."
             />
           </div>
         </section>
@@ -622,81 +572,55 @@ export default function Home() {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold">Froogle Reader</h3>
-                  <p className="text-sm text-[#756c61]">
-                    {authUser ? "You are signed in" : "Sign in to your reader"}
-                  </p>
+                  <p className="text-sm text-[#756c61]">Sign in to your reader</p>
                 </div>
               </div>
 
-              {authUser ? (
-                <div className="mt-5 grid gap-3">
-                  <div className="rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 py-2 text-sm text-[#5f574f]">
-                    Signed in as <span className="font-semibold text-[#20242a]">{authUser.email}</span>
+              <div className="mt-5 grid grid-cols-2 gap-2 rounded-md bg-[#f6f4ef] p-1">
+                <button className={authModeButton(authMode === "login")} onClick={() => setAuthMode("login")}>
+                  Log in
+                </button>
+                <button className={authModeButton(authMode === "signup")} onClick={() => setAuthMode("signup")}>
+                  Sign up
+                </button>
+              </div>
+
+              <form onSubmit={handleAuth} className="mt-5 grid gap-3">
+                <label className="grid gap-1 text-sm font-medium">
+                  Email
+                  <input
+                    type="email"
+                    value={authEmail}
+                    onChange={(event) => setAuthEmail(event.target.value)}
+                    className="h-11 rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 font-normal outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
+                    autoComplete="email"
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-medium">
+                  Password
+                  <input
+                    type="password"
+                    value={authPassword}
+                    onChange={(event) => setAuthPassword(event.target.value)}
+                    className="h-11 rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 font-normal outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
+                    autoComplete={authMode === "login" ? "current-password" : "new-password"}
+                  />
+                </label>
+
+                {error && (
+                  <div className="rounded-md border border-[#e7b4a2] bg-[#fff4ef] px-3 py-2 text-sm text-[#8a3a25]">
+                    {error}
                   </div>
-                  <button
-                    onClick={() => openReaderFeed("all", "all")}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-4 text-sm font-semibold text-white transition hover:bg-[#263b2f]"
-                  >
-                    <Rss className="h-4 w-4" />
-                    Open reader
-                  </button>
-                  <button
-                    onClick={signOut}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-4 text-sm font-semibold text-[#485248] transition hover:bg-[#f1ede5]"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Sign out
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="mt-5 grid grid-cols-2 gap-2 rounded-md bg-[#f6f4ef] p-1">
-                    <button className={authModeButton(authMode === "login")} onClick={() => setAuthMode("login")}>
-                      Log in
-                    </button>
-                    <button className={authModeButton(authMode === "signup")} onClick={() => setAuthMode("signup")}>
-                      Sign up
-                    </button>
-                  </div>
+                )}
 
-                  <form onSubmit={handleAuth} className="mt-5 grid gap-3">
-                    <label className="grid gap-1 text-sm font-medium">
-                      Email
-                      <input
-                        type="email"
-                        value={authEmail}
-                        onChange={(event) => setAuthEmail(event.target.value)}
-                        className="h-11 rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 font-normal outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
-                        autoComplete="email"
-                      />
-                    </label>
-                    <label className="grid gap-1 text-sm font-medium">
-                      Password
-                      <input
-                        type="password"
-                        value={authPassword}
-                        onChange={(event) => setAuthPassword(event.target.value)}
-                        className="h-11 rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 font-normal outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
-                        autoComplete={authMode === "login" ? "current-password" : "new-password"}
-                      />
-                    </label>
-
-                    {error && (
-                      <div className="rounded-md border border-[#e7b4a2] bg-[#fff4ef] px-3 py-2 text-sm text-[#8a3a25]">
-                        {error}
-                      </div>
-                    )}
-
-                    <button
-                      disabled={isAuthenticating || !authEmail.trim() || !authPassword}
-                      className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-4 text-sm font-semibold text-white transition hover:bg-[#263b2f] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isAuthenticating && <Loader2 className="h-4 w-4 animate-spin" />}
-                      {authMode === "login" ? "Log in" : "Create account"}
-                    </button>
-                  </form>
-                </>
-              )}
+                <button
+                  disabled={isAuthenticating || !authEmail.trim() || !authPassword}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#2f4738] px-4 text-sm font-semibold text-white transition hover:bg-[#263b2f] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isAuthenticating && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {authMode === "login" ? "Log in" : "Create account"}
+                </button>
+              </form>
             </section>
           </div>
         </section>
@@ -730,6 +654,12 @@ export default function Home() {
               >
                 <Inbox className="h-4 w-4" />
                 Reader
+              </button>
+              <button
+                onClick={openAbout}
+                className="inline-flex h-10 items-center justify-center rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
+              >
+                About
               </button>
               <button
                 onClick={signOut}
@@ -956,6 +886,12 @@ export default function Home() {
                     Account
                   </button>
                   <button
+                    onClick={openAbout}
+                    className="inline-flex h-10 items-center rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
+                  >
+                    About
+                  </button>
+                  <button
                     onClick={() => refreshData()}
                     className="grid h-10 w-10 place-items-center rounded-md border border-[#d8d2c8] bg-white text-[#485248] hover:bg-[#f1ede5]"
                     title="Refresh"
@@ -1110,7 +1046,10 @@ export default function Home() {
                                   {article.writer.name}
                                 </span>
                               )}
-                              <span>{formatDate(article.publishedAt ?? article.discoveredAt)}</span>
+                              <span>Added {formatDate(article.discoveredAt)}</span>
+                              {article.publishedAt && (
+                                <span>Published {formatDate(article.publishedAt)}</span>
+                              )}
                               {paywall && (
                                 <span className="rounded bg-[#fff0d8] px-2 py-1 font-medium text-[#865315]">
                                   Subscription
@@ -1273,6 +1212,129 @@ export default function Home() {
           </div>
         </div>
       )}
+    </main>
+  );
+}
+
+function AboutPage({
+  authUser,
+  onOpenReader,
+  onOpenSignIn,
+  onOpenAccount,
+  onSignOut
+}: {
+  authUser: AuthUser | null;
+  onOpenReader: () => void;
+  onOpenSignIn: () => void;
+  onOpenAccount: () => void;
+  onSignOut: () => void;
+}) {
+  return (
+    <main className="min-h-screen bg-[#f6f4ef] text-[#20242a]">
+      <header className="border-b border-[#ded7cc] bg-[#fbfaf7]/95 px-4 py-4 backdrop-blur md:px-8">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-[#d36b45] text-white">
+              <Rss className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="truncate text-lg font-semibold">Froogle Reader</div>
+              <div className="hidden text-xs text-[#756c61] sm:block">About</div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {authUser ? (
+              <>
+                <button
+                  onClick={onOpenReader}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#20242a] px-3 text-sm font-semibold text-white hover:bg-black"
+                >
+                  <Inbox className="h-4 w-4" />
+                  Reader
+                </button>
+                <button
+                  onClick={onOpenAccount}
+                  className="hidden h-10 items-center justify-center rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5] sm:inline-flex"
+                >
+                  Account
+                </button>
+                <button
+                  onClick={onSignOut}
+                  className="grid h-10 w-10 place-items-center rounded-md border border-[#d8d2c8] bg-white text-[#485248] hover:bg-[#f1ede5]"
+                  title="Sign out"
+                  aria-label="Sign out"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={onOpenSignIn}
+                className="inline-flex h-10 items-center justify-center rounded-md bg-[#20242a] px-4 text-sm font-semibold text-white hover:bg-black"
+              >
+                Sign in
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <section className="px-4 py-10 md:px-8">
+        <div className="mx-auto max-w-6xl">
+          <div className="max-w-3xl">
+            <div className="text-xs font-semibold uppercase tracking-wide text-[#8b4b36]">About Froogle Reader</div>
+            <h1 className="mt-2 text-4xl font-semibold tracking-tight md:text-5xl">
+              A focused reader for following individual writers.
+            </h1>
+            <p className="mt-4 text-base leading-7 text-[#5f574f]">
+              Froogle Reader brings RSS feeds, author pages, saved articles, and read state into one private account so
+              the latest additions are easy to scan and filter.
+            </p>
+          </div>
+
+          <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <FeatureCard
+              icon={<Search className="h-5 w-5" />}
+              title="Find sources quickly"
+              description="Describe a writer or paste a URL, then preview the detected RSS feed or author page before saving it."
+            />
+            <FeatureCard
+              icon={<Inbox className="h-5 w-5" />}
+              title="Latest-first feed"
+              description="Read the newest added articles across every saved writer, then switch to unread or writer-specific views."
+            />
+            <FeatureCard
+              icon={<Star className="h-5 w-5" />}
+              title="Save what matters"
+              description="Mark articles as read, favorite standout pieces, and bookmark items you want to return to later."
+            />
+            <FeatureCard
+              icon={<ShieldCheck className="h-5 w-5" />}
+              title="Private accounts"
+              description="Each account keeps its own writers, articles, saved states, and session-backed access."
+            />
+          </div>
+
+          <div className="mt-10 grid gap-6 md:grid-cols-3">
+            <WorkflowStep
+              icon={<Layers3 className="h-5 w-5" />}
+              title="Collect"
+              description="Bring newsletters, RSS feeds, blogs, publication pages, and individual author pages into one reader."
+            />
+            <WorkflowStep
+              icon={<BellRing className="h-5 w-5" />}
+              title="Check"
+              description="Refresh saved sources on demand and let the reader deduplicate articles by their canonical links."
+            />
+            <WorkflowStep
+              icon={<ExternalLink className="h-5 w-5" />}
+              title="Open"
+              description="Read excerpts in the feed, then open the original article on the publisher site when you are ready."
+            />
+          </div>
+        </div>
+      </section>
     </main>
   );
 }
