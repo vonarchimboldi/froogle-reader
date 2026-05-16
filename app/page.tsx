@@ -800,6 +800,15 @@ export default function Home() {
                     <Inbox className="h-4 w-4" />
                     Back to reader
                   </button>
+                  {authUser.isAdmin && (
+                    <button
+                      onClick={openAdmin}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-4 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
+                    >
+                      <LineChart className="h-4 w-4" />
+                      Analytics
+                    </button>
+                  )}
                   <button
                     onClick={signOut}
                     className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-4 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
@@ -909,6 +918,15 @@ export default function Home() {
               </span>
               <span className="rounded bg-white/10 px-2 py-0.5 text-xs">{bookmarkCount}</span>
             </button>
+
+            {authUser.isAdmin && (
+              <button className={`mt-1 ${sidebarButton(false)}`} onClick={openAdmin}>
+                <span className="flex min-w-0 items-center gap-2">
+                  <LineChart className="h-4 w-4 shrink-0" />
+                  <span>Analytics</span>
+                </span>
+              </button>
+            )}
 
             <div className="mt-4 px-2 text-xs font-semibold uppercase tracking-wide text-[#94a092]">
               Writer feeds
@@ -1101,6 +1119,15 @@ export default function Home() {
                   title={`Delete ${selectedWriter.name}`}
                 >
                   <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+              {authUser.isAdmin && (
+                <button
+                  onClick={openAdmin}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
+                >
+                  <LineChart className="h-4 w-4" />
+                  Analytics
                 </button>
               )}
             </div>
