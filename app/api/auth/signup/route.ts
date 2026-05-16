@@ -1,6 +1,6 @@
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { apiJson, handleOptions } from "@/lib/api-response";
-import { createSession, hashPassword, normalizeEmail, sessionCookie } from "@/lib/auth";
+import { createSession, hashPassword, isAdminEmail, normalizeEmail, sessionCookie } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export { handleOptions as OPTIONS };
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     const session = await createSession(user.id);
 
     return apiJson(
-      { user, token: session.token },
+      { user: { ...user, isAdmin: isAdminEmail(user.email) }, token: session.token },
       { status: 201, headers: { "Set-Cookie": sessionCookie(session.token, session.expiresAt) } }
     );
   } catch (error) {

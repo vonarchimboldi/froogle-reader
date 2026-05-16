@@ -100,6 +100,7 @@ type AppView = "reader" | "account" | "about" | "admin";
 type AuthUser = {
   id: string;
   email: string;
+  isAdmin?: boolean;
 };
 
 type AdminAnalytics = {
@@ -523,6 +524,11 @@ export default function Home() {
   }
 
   async function openAdmin() {
+    if (!authUser?.isAdmin) {
+      setError("You do not have access to analytics.");
+      return;
+    }
+
     setHasOpenedReader(true);
     setActiveView("admin");
     if (adminAnalytics || isAdminLoading) return;
@@ -746,13 +752,15 @@ export default function Home() {
               >
                 About
               </button>
-              <button
-                onClick={openAdmin}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
-              >
-                <LineChart className="h-4 w-4" />
-                Analytics
-              </button>
+              {authUser.isAdmin && (
+                <button
+                  onClick={openAdmin}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
+                >
+                  <LineChart className="h-4 w-4" />
+                  Analytics
+                </button>
+              )}
               <button
                 onClick={signOut}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#20242a] px-3 text-sm font-semibold text-white hover:bg-black"
@@ -1001,13 +1009,15 @@ export default function Home() {
                   >
                     About
                   </button>
-                  <button
-                    onClick={openAdmin}
-                    className="inline-flex h-10 items-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
-                  >
-                    <LineChart className="h-4 w-4" />
-                    Analytics
-                  </button>
+                  {authUser.isAdmin && (
+                    <button
+                      onClick={openAdmin}
+                      className="inline-flex h-10 items-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
+                    >
+                      <LineChart className="h-4 w-4" />
+                      Analytics
+                    </button>
+                  )}
                   <button
                     onClick={() => refreshData()}
                     className="grid h-10 w-10 place-items-center rounded-md border border-[#d8d2c8] bg-white text-[#485248] hover:bg-[#f1ede5]"

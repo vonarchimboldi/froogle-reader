@@ -1,5 +1,5 @@
 import { apiJson, handleOptions } from "@/lib/api-response";
-import { createSession, normalizeEmail, sessionCookie, verifyPassword } from "@/lib/auth";
+import { createSession, isAdminEmail, normalizeEmail, sessionCookie, verifyPassword } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export { handleOptions as OPTIONS };
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   const session = await createSession(user.id);
 
   return apiJson(
-    { user: { id: user.id, email: user.email }, token: session.token },
+    { user: { id: user.id, email: user.email, isAdmin: isAdminEmail(user.email) }, token: session.token },
     { headers: { "Set-Cookie": sessionCookie(session.token, session.expiresAt) } }
   );
 }

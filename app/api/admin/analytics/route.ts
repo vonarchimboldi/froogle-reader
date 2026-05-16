@@ -1,5 +1,5 @@
 import { apiJson, handleOptions, unauthorized } from "@/lib/api-response";
-import { getAuthUser } from "@/lib/auth";
+import { getAuthUser, isAdminEmail } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export { handleOptions as OPTIONS };
@@ -7,6 +7,9 @@ export { handleOptions as OPTIONS };
 export async function GET(request: Request) {
   const user = await getAuthUser(request);
   if (!user) return unauthorized();
+  if (!isAdminEmail(user.email)) {
+    return apiJson({ error: "You do not have access to analytics." }, { status: 403 });
+  }
 
   const [userCount, writerCount, articleCount, sessionCount, users, recentSessions, recentArticles, sourceChecks] =
     await Promise.all([

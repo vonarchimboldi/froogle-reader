@@ -10,6 +10,15 @@ export type AuthUser = {
   email: string;
 };
 
+export function isAdminEmail(email: string) {
+  const adminEmails = (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((item) => normalizeEmail(item))
+    .filter(Boolean);
+
+  return adminEmails.includes(normalizeEmail(email));
+}
+
 export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
