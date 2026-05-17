@@ -30,6 +30,7 @@ type Writer = {
   id: string;
   name: string;
   publication?: string | null;
+  category?: string | null;
   sourceUrl: string;
   sourceType: "RSS" | "AUTHOR_PAGE";
   lastCheckedAt?: string | null;
@@ -51,6 +52,7 @@ type Article = {
     id: string;
     name: string;
     publication?: string | null;
+    category?: string | null;
   };
 };
 
@@ -94,6 +96,7 @@ type SourceLookup = {
 };
 
 type ArticleFilter = "new" | "all";
+type SortDirection = "desc" | "asc";
 type FeedSelection = "all" | "favorites" | "bookmarks" | string;
 type AuthMode = "login" | "signup";
 type AppView = "reader" | "account" | "about" | "admin";
@@ -171,6 +174,10 @@ export default function Home() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedWriterId, setSelectedWriterId] = useState<FeedSelection>("all");
   const [articleFilter, setArticleFilter] = useState<ArticleFilter>("all");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [writerDescription, setWriterDescription] = useState("");
   const [isSourceFinderOpen, setIsSourceFinderOpen] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -202,20 +209,30 @@ export default function Home() {
   const feedKicker = isSavedFeed ? "Saved articles" : isMainFeed ? (isNewFeed ? "New main feed" : "Main feed") : "Writer feed";
   const feedDescription = isMainFeed
     ? isNewFeed
-      ? "Unread articles from every saved writer, latest first"
-      : "Every saved article from every writer, latest first"
+      ? "Unread articles from every saved writer, sorted by date added"
+      : "Every saved article from every writer, sorted by date added"
     : isFavoritesFeed
       ? "Articles you marked as favorites"
       : isBookmarksFeed
         ? "Articles you bookmarked for later"
     : isNewFeed
-      ? `Articles from ${selectedWriter?.name ?? "this writer"}, latest first`
-      : `Articles from ${selectedWriter?.name ?? "this writer"}, latest first`;
+      ? `Articles from ${selectedWriter?.name ?? "this writer"}, sorted by date added`
+      : `Articles from ${selectedWriter?.name ?? "this writer"}, sorted by date added`;
   const totalArticleCount = writers.reduce((sum, writer) => sum + writer._count.articles, 0);
   const unreadCount = useMemo(() => articles.filter((article) => !article.isRead).length, [articles]);
   const favoriteCount = useMemo(() => articles.filter((article) => article.isFavorite).length, [articles]);
   const bookmarkCount = useMemo(() => articles.filter((article) => article.isBookmarked).length, [articles]);
-  const sortedArticles = useMemo(() => [...articles].sort(compareArticlesByLatestUpdate), [articles]);
+  const writerCategories = useMemo(
+    () => Array.from(new Set(writers.map((writer) => writer.category?.trim()).filter(Boolean) as string[])).sort(),
+    [writers]
+  );
+  const categoryOptions = useMemo(() => ["all", ...writerCategories], [writerCategories]);
+  const sortedArticles = useMemo(() => {
+    const dateFilteredArticles = articles.filter((article) => articleIsInDateRange(article, dateFrom, dateTo));
+    return [...dateFilteredArticles].sort((a, b) =>
+      sortDirection === "desc" ? compareArticlesByLatestUpdate(a, b) : compareArticlesByLatestUpdate(b, a)
+    );
+  }, [articles, dateFrom, dateTo, sortDirection]);
   const latestSourceCheckTime = useMemo(() => newestWriterCheckTime(writers), [writers]);
   const sourceCheckLabel = latestSourceCheckTime ? formatDateTime(latestSourceCheckTime) : "Not checked yet";
   const visibleArticles = useMemo(() => {
@@ -225,12 +242,14 @@ export default function Home() {
         ? sortedArticles.filter((article) => article.isFavorite)
         : isBookmarksFeed
           ? sortedArticles.filter((article) => article.isBookmarked)
-          : sortedArticles;
+          : selectedCategory === "all"
+            ? sortedArticles
+            : sortedArticles.filter((article) => article.writer.category === selectedCategory);
 
     return isMainFeed && articleFilter === "new"
       ? scopedArticles.filter((article) => !article.isRead)
       : scopedArticles;
-  }, [articleFilter, isBookmarksFeed, isFavoritesFeed, isMainFeed, isWriterFeed, selectedWriterId, sortedArticles]);
+  }, [articleFilter, isBookmarksFeed, isFavoritesFeed, isMainFeed, isWriterFeed, selectedCategory, selectedWriterId, sortedArticles]);
 
   const signOut = useCallback(async () => {
     const token = authToken;
@@ -249,6 +268,10 @@ export default function Home() {
     setPreview(null);
     setSelectedWriterId("all");
     setArticleFilter("all");
+    setSelectedCategory("all");
+    setSortDirection("desc");
+    setDateFrom("");
+    setDateTo("");
     setIsSourceFinderOpen(false);
     setHasOpenedReader(false);
     setActiveView("reader");
@@ -338,6 +361,10 @@ export default function Home() {
       setActiveView("reader");
       setSelectedWriterId("all");
       setArticleFilter("all");
+      setSelectedCategory("all");
+      setSortDirection("desc");
+      setDateFrom("");
+      setDateTo("");
       setAuthPassword("");
       await refreshData(data.token);
     } catch (authError) {
@@ -416,6 +443,36 @@ export default function Home() {
     const nextSelection = selectedWriterId === writerId ? "all" : selectedWriterId;
     setSelectedWriterId(nextSelection);
     await refreshData();
+  }
+
+  async function updateWriterCategory(writerId: string, currentCategory?: string | null) {
+    const nextCategory = window.prompt("Writer category", currentCategory ?? "");
+    if (nextCategory === null) return;
+
+    setError(null);
+    setNotice(null);
+
+    const response = await fetch(apiUrl(`/api/writers/${writerId}`), {
+      method: "PATCH",
+      headers: authHeaders(authToken, { "content-type": "application/json" }),
+      body: JSON.stringify({ category: nextCategory })
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      setError(data.error || "Could not update writer category.");
+      return;
+    }
+
+    setWriters((current) => current.map((writer) => (writer.id === writerId ? data : writer)));
+    setArticles((current) =>
+      current.map((article) =>
+        article.writer.id === writerId || article.writerId === writerId
+          ? { ...article, writer: { ...article.writer, category: data.category } }
+          : article
+      )
+    );
+    setNotice(data.category ? `Moved ${data.name} to ${data.category}.` : `Removed category from ${data.name}.`);
   }
 
   const checkSourcesNow = useCallback(async (options: { silent?: boolean } = {}) => {
@@ -511,6 +568,12 @@ export default function Home() {
   function openReaderFeed(feed: FeedSelection, filter: ArticleFilter = "all") {
     setSelectedWriterId(feed);
     setArticleFilter(feed === "all" ? filter : "all");
+    if (feed !== "all") {
+      setSelectedCategory("all");
+      setSortDirection("desc");
+      setDateFrom("");
+      setDateTo("");
+    }
     openReader();
   }
 
@@ -899,7 +962,13 @@ export default function Home() {
 
             <button
               className={`mt-1 ${sidebarButton(selectedWriterId === "favorites")}`}
-              onClick={() => setSelectedWriterId("favorites")}
+              onClick={() => {
+                setSelectedWriterId("favorites");
+                setSelectedCategory("all");
+                setSortDirection("desc");
+                setDateFrom("");
+                setDateTo("");
+              }}
             >
               <span className="flex min-w-0 items-center gap-2">
                 <Star className="h-4 w-4 shrink-0" />
@@ -910,7 +979,13 @@ export default function Home() {
 
             <button
               className={`mt-1 ${sidebarButton(selectedWriterId === "bookmarks")}`}
-              onClick={() => setSelectedWriterId("bookmarks")}
+              onClick={() => {
+                setSelectedWriterId("bookmarks");
+                setSelectedCategory("all");
+                setSortDirection("desc");
+                setDateFrom("");
+                setDateTo("");
+              }}
             >
               <span className="flex min-w-0 items-center gap-2">
                 <Bookmark className="h-4 w-4 shrink-0" />
@@ -939,6 +1014,10 @@ export default function Home() {
                   onClick={() => {
                     setSelectedWriterId(writer.id);
                     setArticleFilter("all");
+                    setSelectedCategory("all");
+                    setSortDirection("desc");
+                    setDateFrom("");
+                    setDateTo("");
                   }}
                   title={writer.sourceUrl}
                 >
@@ -946,9 +1025,18 @@ export default function Home() {
                     <span className="block truncate font-medium">{writer.name}</span>
                     <span className="mt-0.5 flex items-center gap-1 text-xs text-[#aeb8ac]">
                       <Radio className="h-3 w-3" />
+                      {writer.category ? `${writer.category} · ` : ""}
                       {writer.sourceType === "RSS" ? "RSS" : "Author page"} · {writer._count.articles}
                     </span>
                   </span>
+                </button>
+                <button
+                  className="grid w-9 place-items-center rounded-md text-[#cfd6cc] transition hover:bg-white/10"
+                  onClick={() => updateWriterCategory(writer.id, writer.category)}
+                  aria-label={`Set category for ${writer.name}`}
+                  title={writer.category ? `Category: ${writer.category}` : `Set category for ${writer.name}`}
+                >
+                  <Filter className="h-4 w-4" />
                 </button>
                 <button
                   className="grid w-9 place-items-center rounded-md text-[#f0b29c] transition hover:bg-white/10"
@@ -1098,6 +1186,12 @@ export default function Home() {
                   const nextSelection = event.target.value;
                   setSelectedWriterId(nextSelection);
                   setArticleFilter("all");
+                  if (nextSelection !== "all") {
+                    setSelectedCategory("all");
+                    setSortDirection("desc");
+                    setDateFrom("");
+                    setDateTo("");
+                  }
                 }}
                 className="h-10 min-w-0 flex-1 rounded-md border border-[#d8d2c8] bg-white px-3 text-sm outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
                 aria-label="Filter by writer"
@@ -1112,14 +1206,24 @@ export default function Home() {
                 ))}
               </select>
               {selectedWriter && (
-                <button
-                  onClick={() => deleteWriter(selectedWriter.id)}
-                  className="grid h-10 w-10 place-items-center rounded-md border border-[#d8d2c8] bg-white text-[#9c4f36] hover:bg-[#fff4ef]"
-                  aria-label={`Delete ${selectedWriter.name}`}
-                  title={`Delete ${selectedWriter.name}`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                <>
+                  <button
+                    onClick={() => updateWriterCategory(selectedWriter.id, selectedWriter.category)}
+                    className="grid h-10 w-10 place-items-center rounded-md border border-[#d8d2c8] bg-white text-[#485248] hover:bg-[#f1ede5]"
+                    aria-label={`Set category for ${selectedWriter.name}`}
+                    title={selectedWriter.category ? `Category: ${selectedWriter.category}` : `Set category for ${selectedWriter.name}`}
+                  >
+                    <Filter className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => deleteWriter(selectedWriter.id)}
+                    className="grid h-10 w-10 place-items-center rounded-md border border-[#d8d2c8] bg-white text-[#9c4f36] hover:bg-[#fff4ef]"
+                    aria-label={`Delete ${selectedWriter.name}`}
+                    title={`Delete ${selectedWriter.name}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </>
               )}
               {authUser.isAdmin && (
                 <button
@@ -1135,22 +1239,86 @@ export default function Home() {
 
           {isMainFeed && (
             <div className="border-b border-[#d8d2c8] bg-[#fbfaf7] px-4 py-4 md:px-8">
-              <div className="mx-auto grid max-w-6xl gap-3 md:grid-cols-3">
-                <SummaryCard
-                  icon={<Inbox className="h-4 w-4" />}
-                  label={isNewFeed ? "New feed" : "Main feed"}
-                  value={`${visibleArticles.length} article${visibleArticles.length === 1 ? "" : "s"}`}
-                />
-                <SummaryCard
-                  icon={<Filter className="h-4 w-4" />}
-                  label="Included writers"
-                  value={`${writers.length} writer feeds`}
-                />
-                <SummaryCard
-                  icon={<Clock3 className="h-4 w-4" />}
-                  label="Last checked"
-                  value={isPolling ? "Checking sources..." : sourceCheckLabel}
-                />
+              <div className="mx-auto grid max-w-6xl gap-4">
+                <div className="grid gap-3 md:grid-cols-3">
+                  <SummaryCard
+                    icon={<Inbox className="h-4 w-4" />}
+                    label={isNewFeed ? "New feed" : "Main feed"}
+                    value={`${visibleArticles.length} article${visibleArticles.length === 1 ? "" : "s"}`}
+                  />
+                  <SummaryCard
+                    icon={<Filter className="h-4 w-4" />}
+                    label="Included writers"
+                    value={selectedCategory === "all" ? `${writers.length} writer feeds` : selectedCategory}
+                  />
+                  <SummaryCard
+                    icon={<Clock3 className="h-4 w-4" />}
+                    label="Last checked"
+                    value={isPolling ? "Checking sources..." : sourceCheckLabel}
+                  />
+                </div>
+
+                <div className="grid gap-3 rounded-lg border border-[#d8d2c8] bg-white p-3 shadow-sm md:grid-cols-[minmax(150px,1fr)_minmax(140px,180px)_minmax(140px,180px)_minmax(140px,180px)_auto] md:items-end">
+                  <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-[#756c61]">
+                    Category
+                    <select
+                      value={selectedCategory}
+                      onChange={(event) => setSelectedCategory(event.target.value)}
+                      className="h-10 rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 text-sm font-normal normal-case tracking-normal text-[#20242a] outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
+                    >
+                      {categoryOptions.map((category) => (
+                        <option key={category} value={category}>
+                          {category === "all" ? "All categories" : category}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-[#756c61]">
+                    Sort
+                    <select
+                      value={sortDirection}
+                      onChange={(event) => setSortDirection(event.target.value as SortDirection)}
+                      className="h-10 rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 text-sm font-normal normal-case tracking-normal text-[#20242a] outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
+                    >
+                      <option value="desc">Newest added first</option>
+                      <option value="asc">Oldest added first</option>
+                    </select>
+                  </label>
+
+                  <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-[#756c61]">
+                    From
+                    <input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(event) => setDateFrom(event.target.value)}
+                      className="h-10 rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 text-sm font-normal normal-case tracking-normal text-[#20242a] outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
+                    />
+                  </label>
+
+                  <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-[#756c61]">
+                    To
+                    <input
+                      type="date"
+                      value={dateTo}
+                      onChange={(event) => setDateTo(event.target.value)}
+                      className="h-10 rounded-md border border-[#d8d2c8] bg-[#fbfaf7] px-3 text-sm font-normal normal-case tracking-normal text-[#20242a] outline-none focus:border-[#627566] focus:ring-2 focus:ring-[#627566]/20"
+                    />
+                  </label>
+
+                  <button
+                    onClick={() => {
+                      setSelectedCategory("all");
+                      setSortDirection("desc");
+                      setDateFrom("");
+                      setDateTo("");
+                    }}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#d8d2c8] bg-white px-3 text-sm font-semibold text-[#485248] hover:bg-[#f1ede5]"
+                  >
+                    <X className="h-4 w-4" />
+                    Clear
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -2001,6 +2169,23 @@ function newestWriterCheckTime(writers: Writer[]) {
 
 function compareArticlesByLatestUpdate(a: Article, b: Article) {
   return articleSortTime(b) - articleSortTime(a);
+}
+
+function articleIsInDateRange(article: Article, dateFrom: string, dateTo: string) {
+  const time = articleSortTime(article);
+  if (!time) return false;
+
+  if (dateFrom) {
+    const fromTime = new Date(`${dateFrom}T00:00:00`).getTime();
+    if (!Number.isNaN(fromTime) && time < fromTime) return false;
+  }
+
+  if (dateTo) {
+    const toTime = new Date(`${dateTo}T23:59:59.999`).getTime();
+    if (!Number.isNaN(toTime) && time > toTime) return false;
+  }
+
+  return true;
 }
 
 function articleSortTime(article: Article) {

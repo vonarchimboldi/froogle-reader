@@ -39,6 +39,7 @@ model Writer {
   userId         String
   name           String
   publication    String?
+  category       String?
   sourceUrl      String
   sourceType     SourceType
   selectorConfig Json?
